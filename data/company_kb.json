@@ -1,0 +1,26 @@
+{
+  "Adobe": {
+    "rounds": 4,
+    "oa_pattern": "3 Coding Questions (1 Easy, 2 Medium/Hard). Focus on Arrays, DP, and Graphs. 90 minutes.",
+    "frequent_topics": ["Dynamic Programming", "Graphs", "Trees", "System Design (HLD)"],
+    "preparation_tips": "Adobe's OA is notorious for DP. Make sure to practice standard 2D DP problems."
+  },
+  "Microsoft": {
+    "rounds": 3,
+    "oa_pattern": "2 Coding Questions. Usually string manipulation or basic graphs. 60 minutes.",
+    "frequent_topics": ["Strings", "Linked Lists", "Object Oriented Programming"],
+    "preparation_tips": "Focus heavily on edge cases. They want clean, production-ready code."
+  },
+  "Amazon": {
+    "rounds": 4,
+    "oa_pattern": "2 Coding Questions + Work Style Assessment. 90 minutes.",
+    "frequent_topics": ["Trees", "BFS/DFS", "Amazon Leadership Principles"],
+    "preparation_tips": "Do not ignore the Leadership Principles (LP) assessment. It holds as much weight as the coding section."
+  },
+  "Rubrik": {
+    "rounds": 4,
+    "oa_pattern": "Hard OA. 3-4 questions, heavy on advanced DP and segment trees.",
+    "frequent_topics": ["Segment Trees", "Advanced DP", "Tries", "Bit Manipulation"],
+    "preparation_tips": "Requires competitive programming level (Codeforces 1600+) proficiency."
+  }
+}
