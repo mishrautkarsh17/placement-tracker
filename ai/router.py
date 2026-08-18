@@ -50,6 +50,9 @@ def generate_copilot_response(user_message: str, context_data: dict) -> str:
         response = client.models.generate_content(
             model='gemini-3.5-flash',
             contents=full_prompt,
+            config=types.GenerateContentConfig(
+                tools=[{"google_search": {}}]
+            )
         )
         return response.text
     except Exception as e:

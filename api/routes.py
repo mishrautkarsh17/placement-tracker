@@ -213,6 +213,8 @@ def get_daily_brief(student_id: str):
     
     prompt = """
     Generate a concise daily placement briefing for the student.
+    IMPORTANT: If historical preparation data or interview patterns are not available in the provided context for an upcoming company, YOU MUST use your Google Search tool to find typical interview questions, interview formats, and recent interview experiences for that company. Do not say data is unavailable!
+    
     Format exactly like this (use markdown):
     
     ### 🎯 Today's Placement Summary
@@ -273,7 +275,6 @@ def sync_applications(req: SyncAppRequest):
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-<<<<<<< HEAD:api/routes.py
 
 
 @router.post("/recommend-companies")
@@ -309,5 +310,3 @@ async def recommend_companies(resume: UploadFile = File(...)):
 
     recommendation = generate_resume_recommendation(resume_text, active_companies)
     return {"recommendation": recommendation}
-=======
->>>>>>> f96dc4e (fix: persist sync state to sheets and fix email company parsing):backend/api/routes.py
