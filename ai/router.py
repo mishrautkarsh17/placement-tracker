@@ -48,7 +48,7 @@ def generate_copilot_response(user_message: str, context_data: dict) -> str:
         full_prompt = f"{SYSTEM_PROMPT}\n\nContext Data:\n{context_str}\n\nUser Question: {user_message}"
         
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-3.5-flash',
             contents=full_prompt,
             config=types.GenerateContentConfig(
                 tools=[types.Tool(google_search=types.GoogleSearch())]
@@ -100,7 +100,7 @@ ACTIVE COMPANIES ON CAMPUS:
 {companies_str}
 """
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-3.5-flash',
             contents=prompt,
         )
         return response.text
