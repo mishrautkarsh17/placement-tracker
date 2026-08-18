@@ -25,8 +25,8 @@ def scrape(pod_ai_username: str, pod_ai_password: str, target_url: str = None) -
             # --- LOGIN ---
             # Try email/password fields
             try:
-                page.fill("input[type='email']", pod_ai_username, timeout=8000)
-                page.fill("input[type='password']", pod_ai_password, timeout=5000)
+                page.fill("input[type='email']", pod_ai_username, timeout=30000)
+                page.fill("input[type='password']", pod_ai_password, timeout=15000)
                 page.click("button[type='submit']")
                 page.wait_for_load_state("networkidle", timeout=20000)
                 page.wait_for_timeout(5000)
