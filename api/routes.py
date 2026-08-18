@@ -163,14 +163,30 @@ def get_daily_brief(student_id: str):
     cal_data = get_calendar().get("data", [])
     app_data = get_applications(student_id).get("data", [])
     
-    # Filter for upcoming events only
+    # Create a set of ineligible companies (normalized)
+    import re
+    def norm(name): return re.sub(r'[^a-z0-9]', '', str(name).lower())
+    
+    ineligible_companies = set()
+    for app in app_data:
+        status = str(app.get("status", "")).strip().lower()
+        if "not eligible" in status or "not-eligible" in status:
+            ineligible_companies.add(norm(app.get("company_name", "")))
+
+    # Filter for upcoming events only (and exclude ineligible)
     upcoming_events = []
     if cal_data:
         import pandas as pd
         date_col = next((k for k in cal_data[0].keys() if "date" in str(k).lower()), None)
+        comp_col = next((k for k in cal_data[0].keys() if "company" in str(k).lower()), None)
+        
         if date_col:
             today = pd.Timestamp.now().normalize()
             for row in cal_data:
+                comp_name = norm(row.get(comp_col, "")) if comp_col else ""
+                if comp_name and comp_name in ineligible_companies:
+                    continue
+                    
                 try:
                     # Attempt to parse, assuming dayfirst for typical Indian formats (DD/MM/YYYY)
                     event_date = pd.to_datetime(row.get(date_col, ""), dayfirst=True)
@@ -180,7 +196,7 @@ def get_daily_brief(student_id: str):
                     # Keep if date is unparseable (e.g., "TBD")
                     upcoming_events.append(row)
         else:
-            upcoming_events = cal_data
+            upcoming_events = [r for r in cal_data if (norm(r.get(comp_col, "")) not in ineligible_companies if comp_col else True)]
     
     try:
         import json
