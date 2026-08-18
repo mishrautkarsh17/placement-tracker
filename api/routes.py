@@ -257,6 +257,7 @@ def sync_applications(req: SyncAppRequest):
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+<<<<<<< HEAD:api/routes.py
 
 
 @router.post("/recommend-companies")
@@ -292,3 +293,5 @@ async def recommend_companies(resume: UploadFile = File(...)):
 
     recommendation = generate_resume_recommendation(resume_text, active_companies)
     return {"recommendation": recommendation}
+=======
+>>>>>>> f96dc4e (fix: persist sync state to sheets and fix email company parsing):backend/api/routes.py

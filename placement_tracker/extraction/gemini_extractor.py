@@ -17,7 +17,11 @@ Each element must match this schema exactly:
 {schema}
 
 Rules:
+<<<<<<< HEAD:placement_tracker/extraction/gemini_extractor.py
 - company_name: Extract from the Subject line first (e.g., Subject: "Microsoft | Shortlist" → "Microsoft", Subject: "Scry Offers" → "Scry"). Only look in the body if the subject has no company name.
+=======
+- company_name: First look for a "Company" or "Company Name" column in the HTML table. If absent, infer from the Subject line or body (e.g., "Microsoft | Shortlist" → "Microsoft"). DO NOT use generic phrases like "FT Offers", "Batch Graduating", or "Updates" as the company name. If no specific company name is found, use "Unknown".
+>>>>>>> f96dc4e (fix: persist sync state to sheets and fix email company parsing):backend/placement_tracker/extraction/gemini_extractor.py
 - The HTML table in the body contains Roll No and Full Name columns. Map Roll No → student_id, Full Name → student_name.
 - status: Infer from the subject/body:
     Subject/body contains "shortlist for the interview" or "interview shortlist" → "Interviewing"
@@ -50,7 +54,11 @@ Return ONLY a valid JSON array. Each element must match this schema exactly:
 {schema}
 
 Rules:
+<<<<<<< HEAD:placement_tracker/extraction/gemini_extractor.py
 - company_name: Extract from the Subject line first (e.g., "Microsoft | Shortlist" → "Microsoft"). Only look in the body if the subject has no company name.
+=======
+- company_name: First look for a "Company" or "Company Name" column in the HTML table. If absent, infer from the Subject line or body (e.g., "Microsoft | Shortlist" → "Microsoft"). DO NOT use generic phrases like "FT Offers", "Batch Graduating", or "Updates" as the company name. If no specific company name is found, use "Unknown".
+>>>>>>> f96dc4e (fix: persist sync state to sheets and fix email company parsing):backend/placement_tracker/extraction/gemini_extractor.py
 - The HTML table in the body contains Roll No and Full Name columns. Map Roll No → student_id, Full Name → student_name.
 - status: Infer from the subject/body:
     Subject/body contains "shortlist for the interview" or "interview shortlist" → "Interviewing"

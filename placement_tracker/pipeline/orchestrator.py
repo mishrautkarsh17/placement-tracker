@@ -16,17 +16,8 @@ def sync_offer_letters() -> dict:
     Called by the background email watcher thread.
     """
     results = {"email_records": 0, "new_emails_found": 0, "errors": []}
-    
-    # 1. Read last sync date
-    sync_state = {}
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r") as f:
-                sync_state = json.load(f)
-        except Exception as e:
-            logging.error(f"Could not read state file: {e}")
-            
-    last_sync_date_str = sync_state.get("last_sync_date")
+    # 1. Read last sync date from Google Sheets
+    last_sync_date_str = sheets_client.read_last_sync_time()
     
     # Default to 01-Jul-2026 if no state exists
     if not last_sync_date_str:
@@ -73,11 +64,9 @@ def sync_offer_letters() -> dict:
                                             latest_date = d_obj
                                     except ValueError:
                                         pass
-                            
                             if latest_date:
                                 new_sync_date = latest_date.strftime("%d-%b-%Y")
-                                with open(STATE_FILE, "w") as f:
-                                    json.dump({"last_sync_date": new_sync_date}, f)
+                                sheets_client.write_last_sync_time(new_sync_date)
                                 logging.info(f"State advanced incrementally to {new_sync_date}")
                         except Exception as e:
                             logging.error(f"Could not write incremental state file: {e}")
@@ -94,7 +83,7 @@ def sync_offer_letters() -> dict:
 
             # Only advance state if ALL batches succeeded
             if results["email_records"] > 0:
-                sync_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                sync_timestamp = datetime.now().strftime("%d-%b-%Y")
                 sheets_client.write_last_sync_time(sync_timestamp)
         
         # --- STEP 2: Detect interview shortlists directly from email tables ---

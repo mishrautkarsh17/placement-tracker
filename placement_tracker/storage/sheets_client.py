@@ -503,10 +503,26 @@ def write_last_sync_time(timestamp: str):
         if not worksheet:
             continue
         try:
-            worksheet.update("J1", [["Last Updated"], [timestamp]])
+            worksheet.update(values=[["Last Updated"], [timestamp]], range_name="J1")
         except Exception as e:
             logging.error(f"Error writing last sync time to {tab_name}: {e}")
 
+<<<<<<< HEAD:placement_tracker/storage/sheets_client.py
+=======
+def read_last_sync_time() -> str:
+    """Reads the last sync timestamp from cell J2 of the Offers sheet."""
+    worksheet = _get_worksheet(OFFERS_SHEET_TAB)
+    if not worksheet:
+        return None
+    try:
+        val = worksheet.acell("J2").value
+        if val and len(val) > 4:
+            return val
+    except Exception as e:
+        logging.error(f"Error reading last sync time: {e}")
+    return None
+
+>>>>>>> f96dc4e (fix: persist sync state to sheets and fix email company parsing):backend/placement_tracker/storage/sheets_client.py
 
 def update_interview_status(shortlisted: list[dict]):
     """

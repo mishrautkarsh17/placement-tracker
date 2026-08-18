@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Secrets (NEVER commit these)
+.streamlit/secrets.toml
+user_token.json
+google_credentials.json
+service_account.json
+.sync_state.json
+
+# Debug files
+debug_*.py
+debug_screenshots/
+*.png
+*.html
+pod_debug.html
+scratch/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
