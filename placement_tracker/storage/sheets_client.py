@@ -286,8 +286,8 @@ def _upsert_offers_to_tab(records: list[PlacementRecord], tab_name: str):
         # Write headers if empty
         if len(dedup_map) == 0:
             worksheet.insert_row(OFFERS_HEADERS, index=1)
-        # Insert new rows right below the header (index 2) so it stays inside tables
-        worksheet.insert_rows(new_rows, row=2)
+        # Append new rows at the bottom
+        worksheet.append_rows(new_rows)
 
 def upsert_offers(records: list[PlacementRecord]):
     """Upserts a list of PlacementRecord into Offers or MTech offers based on student ID."""
@@ -489,8 +489,8 @@ def upsert_applications(records: list[PlacementRecord]):
     if new_rows:
         if len(dedup_map) == 0:
             worksheet.insert_row(APPLICATIONS_HEADERS, index=1)
-        # Insert new rows right below the header (index 2) so it stays inside tables
-        worksheet.insert_rows(new_rows, row=2)
+        # Append new rows at the bottom
+        worksheet.append_rows(new_rows)
 
 
 def write_last_sync_time(timestamp: str):
@@ -507,8 +507,6 @@ def write_last_sync_time(timestamp: str):
         except Exception as e:
             logging.error(f"Error writing last sync time to {tab_name}: {e}")
 
-<<<<<<< HEAD:placement_tracker/storage/sheets_client.py
-=======
 def read_last_sync_time() -> str:
     """Reads the last sync timestamp from cell J2 of the Offers sheet."""
     worksheet = _get_worksheet(OFFERS_SHEET_TAB)
@@ -521,8 +519,6 @@ def read_last_sync_time() -> str:
     except Exception as e:
         logging.error(f"Error reading last sync time: {e}")
     return None
-
->>>>>>> f96dc4e (fix: persist sync state to sheets and fix email company parsing):backend/placement_tracker/storage/sheets_client.py
 
 def update_interview_status(shortlisted: list[dict]):
     """
@@ -572,5 +568,5 @@ def update_interview_status(shortlisted: list[dict]):
     if new_rows:
         if not existing_records:
             worksheet.insert_row(APPLICATIONS_HEADERS, index=1)
-        worksheet.insert_rows(new_rows, row=2)
+        worksheet.append_rows(new_rows)
         logging.info(f"Inserted {len(new_rows)} new Interviewing rows.")
