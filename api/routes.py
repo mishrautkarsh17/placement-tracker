@@ -132,15 +132,12 @@ def chat_copilot(request: ChatRequest):
     
     # Handle REASONING intent
     # Assemble context
-    context = {}
-    
-    # Get calendar (next 10 events)
-    cal_data = get_calendar().get("data", [])
-    context["calendar_events"] = cal_data[:10] if cal_data else []
-    
-    # Get personal applications
     app_data = get_applications(request.student_id).get("data", [])
+    cal_data = get_calendar().get("data", [])
+    
+    context = {}
     context["my_applications"] = app_data
+    context["calendar_events"] = _get_filtered_upcoming_events(cal_data, app_data)[:10]
     
     # Call Gemini
     reply = generate_copilot_response(request.message, context)
@@ -149,6 +146,42 @@ def chat_copilot(request: ChatRequest):
         "reply": reply,
         "sources": ["Calendar", "Applications"]
     }
+
+def _get_filtered_upcoming_events(cal_data, app_data):
+    if not cal_data:
+        return []
+        
+    import re
+    import pandas as pd
+    def norm(name): return re.sub(r'[^a-z0-9]', '', str(name).lower())
+    
+    ineligible_companies = set()
+    for app in app_data:
+        status = str(app.get("status", "")).strip().lower()
+        if "not eligible" in status or "not-eligible" in status:
+            ineligible_companies.add(norm(app.get("company_name", "")))
+
+    upcoming_events = []
+    date_col = next((k for k in cal_data[0].keys() if "date" in str(k).lower()), None)
+    comp_col = next((k for k in cal_data[0].keys() if "company" in str(k).lower()), None)
+    
+    if date_col:
+        today = pd.Timestamp.now().normalize()
+        for row in cal_data:
+            comp_name = norm(row.get(comp_col, "")) if comp_col else ""
+            if comp_name and comp_name in ineligible_companies:
+                continue
+                
+            try:
+                event_date = pd.to_datetime(row.get(date_col, ""), dayfirst=True)
+                if event_date >= today:
+                    upcoming_events.append(row)
+            except Exception:
+                upcoming_events.append(row)
+    else:
+        upcoming_events = [r for r in cal_data if (norm(r.get(comp_col, "")) not in ineligible_companies if comp_col else True)]
+        
+    return upcoming_events
 
 @router.get("/daily-brief/{student_id}")
 def get_daily_brief(student_id: str):
@@ -163,40 +196,7 @@ def get_daily_brief(student_id: str):
     cal_data = get_calendar().get("data", [])
     app_data = get_applications(student_id).get("data", [])
     
-    # Create a set of ineligible companies (normalized)
-    import re
-    def norm(name): return re.sub(r'[^a-z0-9]', '', str(name).lower())
-    
-    ineligible_companies = set()
-    for app in app_data:
-        status = str(app.get("status", "")).strip().lower()
-        if "not eligible" in status or "not-eligible" in status:
-            ineligible_companies.add(norm(app.get("company_name", "")))
-
-    # Filter for upcoming events only (and exclude ineligible)
-    upcoming_events = []
-    if cal_data:
-        import pandas as pd
-        date_col = next((k for k in cal_data[0].keys() if "date" in str(k).lower()), None)
-        comp_col = next((k for k in cal_data[0].keys() if "company" in str(k).lower()), None)
-        
-        if date_col:
-            today = pd.Timestamp.now().normalize()
-            for row in cal_data:
-                comp_name = norm(row.get(comp_col, "")) if comp_col else ""
-                if comp_name and comp_name in ineligible_companies:
-                    continue
-                    
-                try:
-                    # Attempt to parse, assuming dayfirst for typical Indian formats (DD/MM/YYYY)
-                    event_date = pd.to_datetime(row.get(date_col, ""), dayfirst=True)
-                    if event_date >= today:
-                        upcoming_events.append(row)
-                except Exception:
-                    # Keep if date is unparseable (e.g., "TBD")
-                    upcoming_events.append(row)
-        else:
-            upcoming_events = [r for r in cal_data if (norm(r.get(comp_col, "")) not in ineligible_companies if comp_col else True)]
+    upcoming_events = _get_filtered_upcoming_events(cal_data, app_data)
     
     try:
         import json
