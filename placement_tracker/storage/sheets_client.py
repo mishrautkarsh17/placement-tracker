@@ -506,3 +506,55 @@ def write_last_sync_time(timestamp: str):
             worksheet.update("J1", [["Last Updated"], [timestamp]])
         except Exception as e:
             logging.error(f"Error writing last sync time to {tab_name}: {e}")
+
+
+def update_interview_status(shortlisted: list[dict]):
+    """
+    Given a list of {'company': str, 'roll_no': str} dicts parsed from
+    placement shortlist emails, sets status = 'Interviewing' in the 
+    Applications sheet for matching student + company combinations.
+    Also adds new rows if the student+company combo doesn't exist yet.
+    """
+    if not shortlisted:
+        return
+
+    worksheet = _get_worksheet(APPLICATIONS_SHEET_TAB)
+    if not worksheet:
+        return
+
+    existing_records, dedup_map = _get_all_applications()
+
+    updates = []
+    new_rows = []
+
+    for entry in shortlisted:
+        roll_no = str(entry.get("roll_no", "")).strip()
+        company = str(entry.get("company", "")).strip().lower()
+        name = str(entry.get("name", "")).strip()
+        date = str(entry.get("date", "")).strip()
+
+        if not roll_no or not company:
+            continue
+
+        key = f"{roll_no.lower()}::{company}"
+        if key in dedup_map:
+            row_idx = dedup_map[key]
+            # Update only the status column (col F = index 6)
+            updates.append({
+                "range": f"F{row_idx}",
+                "values": [["Interviewing"]]
+            })
+            logging.info(f"Marking {roll_no} at {company} as Interviewing (row {row_idx})")
+        else:
+            # Add a new row for this shortlist entry
+            new_rows.append([name, roll_no, entry.get("company", ""), "N/A", "N/A", "Interviewing"])
+            logging.info(f"Adding new Interviewing row for {roll_no} at {company}")
+
+    if updates:
+        worksheet.batch_update(updates)
+        logging.info(f"Updated {len(updates)} rows to Interviewing status.")
+    if new_rows:
+        if not existing_records:
+            worksheet.insert_row(APPLICATIONS_HEADERS, index=1)
+        worksheet.insert_rows(new_rows, row=2)
+        logging.info(f"Inserted {len(new_rows)} new Interviewing rows.")

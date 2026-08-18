@@ -55,3 +55,52 @@ def generate_copilot_response(user_message: str, context_data: dict) -> str:
     except Exception as e:
         logging.error(f"Gemini generation error: {e}")
         return "I'm having trouble connecting to my AI brain right now. Please try again later."
+
+
+def generate_resume_recommendation(resume_text: str, active_companies: list[dict]) -> str:
+    """
+    Analyses the student's resume text against the list of active companies
+    and returns a ranked list of best-fit companies with preparation tips.
+    """
+    try:
+        client = get_gemini_client()
+
+        companies_str = json.dumps(active_companies, indent=2)
+
+        prompt = f"""You are an expert university placement advisor and career counselor.
+A student has shared their resume and you have a list of companies currently recruiting on campus.
+
+Analyse the student's skills, projects, and experience from the resume.
+Then compare them against the companies currently hiring and provide personalised recommendations.
+
+Format your response in clean Markdown like this:
+
+### 🏆 Top Company Matches for You
+
+For each top match (up to 5), use this format:
+#### [Rank]. [Company Name] — [Match Score]%
+**Why you're a great fit:** [2-3 sentences explaining which specific skills/projects from the resume match this company's typical requirements]
+**Key prep areas:** [Bullet list of 3-4 specific topics to focus on]
+**Estimated CTC:** [If available from context, otherwise omit]
+
+---
+
+### 📚 General Preparation Advice
+[2-3 sentences of personalised advice based on gaps you observe]
+
+---
+
+STUDENT RESUME:
+{resume_text}
+
+ACTIVE COMPANIES ON CAMPUS:
+{companies_str}
+"""
+        response = client.models.generate_content(
+            model='gemini-3.5-flash-lite',
+            contents=prompt,
+        )
+        return response.text
+    except Exception as e:
+        logging.error(f"Gemini resume recommendation error: {e}")
+        return "I'm having trouble analysing your resume right now. Please try again later."

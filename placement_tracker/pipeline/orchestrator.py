@@ -96,6 +96,18 @@ def sync_offer_letters() -> dict:
             if results["email_records"] > 0:
                 sync_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 sheets_client.write_last_sync_time(sync_timestamp)
+        
+        # --- STEP 2: Detect interview shortlists directly from email tables ---
+        # This is more reliable than inferring from calendar or Gemini extraction
+        try:
+            shortlisted = gmail_reader.fetch_shortlisted_students(last_sync_date_str)
+            if shortlisted:
+                logging.info(f"Updating 'Interviewing' status for {len(shortlisted)} shortlisted entries.")
+                sheets_client.update_interview_status(shortlisted)
+                results["shortlist_updates"] = len(shortlisted)
+        except Exception as e:
+            logging.error(f"Failed to fetch shortlist emails: {e}")
+            results["errors"].append(f"Shortlist detection failed: {e}")
             
     except Exception as e:
         results["errors"].append(f"Failed to fetch emails: {e}")

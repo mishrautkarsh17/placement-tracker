@@ -9,28 +9,32 @@ client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
     
 BATCH_EMAIL_PROMPT = """
 You are a university placement data extraction assistant.
-Below are HTML bodies from MULTIPLE placement announcement emails, separated by the delimiter ---EMAIL_BREAK---.
+Below are emails from a university placement cell, each separated by ---EMAIL_BREAK---.
+Each email is preceded by its SUBJECT line and DATE metadata.
 Extract ALL student placement records from ALL emails and return a SINGLE flat JSON array.
 
 Each element must match this schema exactly:
 {schema}
 
 Rules:
-- The company name appears in the email body as a heading (e.g., "Scry offers" → company_name = "Scry").
-- The HTML table contains Roll No and Full Name. Map them to student_id and student_name.
-- offer_type: Look for clues in the email.
-    If the email mentions "PPO" or "Pre-Placement Offer" → "PPO"
-    If it mentions "Full Time" or "FTE" or "full-time" → "FT"
-    If it mentions "Internship" → "Intern"
-    If it mentions both internship and full-time → "Intern+FT"
+- company_name: Extract from the Subject line first (e.g., Subject: "Microsoft | Shortlist" → "Microsoft", Subject: "Scry Offers" → "Scry"). Only look in the body if the subject has no company name.
+- The HTML table in the body contains Roll No and Full Name columns. Map Roll No → student_id, Full Name → student_name.
+- status: Infer from the subject/body:
+    Subject/body contains "shortlist for the interview" or "interview shortlist" → "Interviewing"
+    Contains "offers" or "selected" or "offered" → "Offered"
+    Contains "shortlisted" (but NOT interview) → "Shortlisted"
+    Contains "rejected" → "Rejected"
+    Otherwise → "Applied"
+- offer_type:
+    Contains "PPO" or "Pre-Placement Offer" → "PPO"
+    Contains "Full Time" or "FTE" or "full-time" → "FT"
+    Contains "Internship" → "Intern"
+    Contains both internship and full-time → "Intern+FT"
     Otherwise → "N/A"
-- ctc: Look for CTC, salary, or package information in the email body.
-    Convert INR figures to LPA (e.g., INR 22,00,000 = "22 LPA").
-    If a monthly stipend, write e.g. "50K/month".
-    If no salary/CTC info is found → "N/A"
+- ctc: Extract CTC/salary/package. Convert INR to LPA (e.g., INR 22,00,000 = "22 LPA"). Monthly stipend → "50K/month". If absent → "N/A".
+- IMPORTANT: If the email has no HTML table with student Roll Numbers, it is NOT a placement record email. Return [] for that email — do NOT create rows with Unknown values.
 - Return one JSON object per student row in the table.
-- Return [] if no placement records can be found.
-- Never hallucinate values. If uncertain, use "N/A".
+- Never hallucinate. Use "N/A" for genuinely missing fields.
 
 EMAILS:
 {emails_block}
@@ -38,34 +42,35 @@ EMAILS:
 
 EMAIL_PROMPT = """
 You are a university placement data extraction assistant.
-The following is the HTML body of an email sent by a placement cell.
+Below is a single email from a university placement cell.
+Its SUBJECT line and DATE are provided at the top, followed by the HTML body.
 Extract ALL student placement records from it.
 
 Return ONLY a valid JSON array. Each element must match this schema exactly:
 {schema}
 
 Rules:
-- The company name appears in the email body as a heading (e.g., "Scry offers" → company_name = "Scry").
-- Infer status from context: "offers" or "selected" → "Offered", "shortlisted" → "Shortlisted",
-  "interview" → "Interviewing", "rejected" → "Rejected", otherwise → "Applied".
-- The HTML table contains Roll No and Full Name. Map them to student_id and student_name.
-- offer_type: Look for clues in the email.
-    If the email mentions "PPO" or "Pre-Placement Offer" → "PPO"
-    If it mentions "Full Time" or "FTE" or "full-time" → "FT"
-    If it mentions "Internship" → "Intern"
-    If it mentions both internship and full-time → "Intern+FT"
+- company_name: Extract from the Subject line first (e.g., "Microsoft | Shortlist" → "Microsoft"). Only look in the body if the subject has no company name.
+- The HTML table in the body contains Roll No and Full Name columns. Map Roll No → student_id, Full Name → student_name.
+- status: Infer from the subject/body:
+    Subject/body contains "shortlist for the interview" or "interview shortlist" → "Interviewing"
+    Contains "offers" or "selected" or "offered" → "Offered"
+    Contains "shortlisted" (but NOT interview) → "Shortlisted"
+    Contains "rejected" → "Rejected"
+    Otherwise → "Applied"
+- offer_type:
+    Contains "PPO" or "Pre-Placement Offer" → "PPO"
+    Contains "Full Time" or "FTE" or "full-time" → "FT"
+    Contains "Internship" → "Intern"
+    Contains both internship and full-time → "Intern+FT"
     Otherwise → "N/A"
-- ctc: Look for CTC, salary, or package information in the email body.
-    Convert INR figures to LPA (e.g., INR 22,00,000 = "22 LPA").
-    If a monthly stipend, write e.g. "50K/month".
-    If no salary/CTC info is found → "N/A"
-- The email_date will be injected by the caller, so set email_date = "N/A".
+- ctc: Extract CTC/salary. Convert INR to LPA. Stipend → "50K/month". If absent → "N/A".
+- IMPORTANT: If the email body has no HTML table with student Roll Numbers, this is NOT a placement record email. Return [].
 - Return one JSON object per student row in the table.
-- Return [] if no placement records can be found.
-- Never hallucinate values. If uncertain, use "N/A".
+- Never hallucinate. Use "N/A" for genuinely missing fields.
 
-EMAIL HTML:
-{raw_html}
+EMAIL:
+{email_block}
 """
 
 PORTAL_PROMPT = """
@@ -97,9 +102,8 @@ RAW PAGE TEXT:
 
 def extract_batch_from_emails(emails: list[dict]) -> list[dict]:
     """
-    Sends ALL emails to Gemini in a SINGLE call and returns a list of
-    dicts: {'records': [PlacementRecord...], 'date': str}.
-    emails: list of {'raw_html': str, 'date': str, 'uid': str}
+    Sends ALL emails to Gemini in a SINGLE call and returns a list of PlacementRecord objects.
+    emails: list of {'raw_html': str, 'subject': str, 'date': str, 'uid': str}
     """
     if not client:
         raise ValueError("GEMINI_API_KEY is not set.")
@@ -108,11 +112,13 @@ def extract_batch_from_emails(emails: list[dict]) -> list[dict]:
 
     schema_json = PlacementRecord.schema_json()
     
-    # Build a combined block with per-email separators
-    # Each section is: ---EMAIL_BREAK--- followed by metadata comment then the HTML
+    # Build a combined block — now includes Subject line for company name extraction
     parts = []
     for i, e in enumerate(emails):
-        parts.append(f"<!-- EMAIL {i+1} | DATE: {e.get('date', 'N/A')} -->\n{e.get('raw_html', '')}")
+        subject = e.get('subject', 'No Subject')
+        date = e.get('date', 'N/A')
+        body = e.get('raw_html', '')
+        parts.append(f"<!-- EMAIL {i+1} | SUBJECT: {subject} | DATE: {date} -->\n{body}")
     emails_block = "\n---EMAIL_BREAK---\n".join(parts)
     
     prompt = BATCH_EMAIL_PROMPT.format(schema=schema_json, emails_block=emails_block)
@@ -132,7 +138,9 @@ def extract_batch_from_emails(emails: list[dict]) -> list[dict]:
         records = []
         for item in data:
             try:
-                # Rename offer_date → email_date if model used old field name
+                # Skip rows that still have placeholder Unknown/empty values for key fields
+                if item.get("company_name", "Unknown") == "Unknown" and item.get("student_id", "") == "":
+                    continue
                 if "offer_date" in item and "email_date" not in item:
                     item["email_date"] = item.pop("offer_date")
                 records.append(PlacementRecord(**item))
@@ -144,13 +152,14 @@ def extract_batch_from_emails(emails: list[dict]) -> list[dict]:
         return []
 
 
-def extract_from_email(raw_html: str) -> list[PlacementRecord]:
-    """Extracts a list of PlacementRecord from email HTML using Gemini."""
+def extract_from_email(raw_html: str, subject: str = "") -> list[PlacementRecord]:
+    """Extracts a list of PlacementRecord from email HTML + subject using Gemini."""
     if not client:
         raise ValueError("GEMINI_API_KEY is not set.")
         
     schema_json = PlacementRecord.schema_json()
-    prompt = EMAIL_PROMPT.format(schema=schema_json, raw_html=raw_html)
+    email_block = f"SUBJECT: {subject}\n\nBODY:\n{raw_html}"
+    prompt = EMAIL_PROMPT.format(schema=schema_json, email_block=email_block)
     
     try:
         response = client.models.generate_content(
@@ -163,12 +172,13 @@ def extract_from_email(raw_html: str) -> list[PlacementRecord]:
         data = json.loads(response.text)
         
         if not isinstance(data, list):
-            # If the model returns a single dict instead of a list, wrap it
             data = [data]
             
         records = []
         for item in data:
             try:
+                if item.get("company_name", "Unknown") == "Unknown" and item.get("student_id", "") == "":
+                    continue
                 records.append(PlacementRecord(**item))
             except Exception as e:
                 print(f"Validation error for item in email: {e}")

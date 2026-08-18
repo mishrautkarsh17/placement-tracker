@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from typing import List, Dict, Any
 from pydantic import BaseModel
 import sys
 import os
+import io
 
 # Ensure we can import from the existing project structure
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -256,3 +257,38 @@ def sync_applications(req: SyncAppRequest):
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/recommend-companies")
+async def recommend_companies(resume: UploadFile = File(...)):
+    """Accepts a PDF resume upload, extracts text, and returns AI-powered company recommendations."""
+    from ai.router import generate_resume_recommendation
+
+    if not resume.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    try:
+        import pypdf
+        contents = await resume.read()
+        reader = pypdf.PdfReader(io.BytesIO(contents))
+        resume_text = "\n".join(
+            page.extract_text() for page in reader.pages if page.extract_text()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not parse PDF: {e}")
+
+    if not resume_text.strip():
+        raise HTTPException(status_code=422, detail="No readable text found in the PDF. Please ensure it's not a scanned image.")
+
+    # Get active companies from calendar cache
+    try:
+        cal_data = get_calendar().get("data", [])
+        active_companies = [
+            {"company": row.get("Company", row.get("company", "")), "ctc": row.get("CTC", "N/A")}
+            for row in cal_data if row.get("Company") or row.get("company")
+        ]
+    except Exception:
+        active_companies = []
+
+    recommendation = generate_resume_recommendation(resume_text, active_companies)
+    return {"recommendation": recommendation}

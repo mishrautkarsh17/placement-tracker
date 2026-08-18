@@ -166,3 +166,97 @@ def fetch_historical_offers(subject_keyword: str) -> list[dict]:
         logging.error(f"IMAP connection error: {e}")
         return []
 
+
+def fetch_shortlisted_students(since_date_str: str) -> list[dict]:
+    """
+    Fetches emails from the placement cell that contain interview shortlists.
+    Parses the HTML table of Roll No + Full Name and returns a list of:
+    {'company': str, 'roll_no': str, 'name': str, 'date': str}
+    """
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        logging.error("Gmail credentials not configured.")
+        return []
+
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        mail.select("inbox")
+
+        search_criteria = f'(FROM "placement@iiitd.ac.in" SINCE "{since_date_str}")'
+        status, messages = mail.search(None, search_criteria)
+
+        if status != "OK" or not messages[0]:
+            logging.info("No shortlist emails found.")
+            return []
+
+        email_uids = messages[0].split()
+        results = []
+
+        for email_uid in email_uids:
+            try:
+                res, msg_data = mail.fetch(email_uid, "(RFC822)")
+                for response_part in msg_data:
+                    if not isinstance(response_part, tuple):
+                        continue
+                    msg = email.message_from_bytes(response_part[1])
+
+                    subject, encoding = decode_header(msg["Subject"])[0]
+                    if isinstance(subject, bytes):
+                        subject = subject.decode(encoding if encoding else "utf-8")
+
+                    body_text = get_email_body_html(msg)
+                    body_lower = body_text.lower()
+                    subject_lower = subject.lower()
+
+                    # Only process emails that look like interview shortlists
+                    is_shortlist = (
+                        "shortlist" in subject_lower
+                        or "interview" in subject_lower
+                        or "shortlist for the interview" in body_lower
+                    )
+                    if not is_shortlist:
+                        continue
+
+                    # Extract company from subject line
+                    company = "Unknown"
+                    for separator in ["|", "-", "–", ":"]:
+                        if separator in subject:
+                            company = subject.split(separator)[0].strip()
+                            break
+                    if company == "Unknown":
+                        company = subject.strip()
+
+                    from email.utils import parsedate_to_datetime
+                    date_str = msg.get("Date", "")
+                    try:
+                        parsed_date = parsedate_to_datetime(date_str).strftime("%Y-%m-%d")
+                    except Exception:
+                        parsed_date = "N/A"
+
+                    # Parse HTML table rows for Roll No + Full Name
+                    soup = BeautifulSoup(body_text, "html.parser")
+                    for row in soup.find_all("tr"):
+                        cells = row.find_all("td")
+                        if len(cells) >= 2:
+                            roll_no = cells[0].get_text(strip=True)
+                            full_name = cells[1].get_text(strip=True)
+                            # Skip header rows
+                            if roll_no.lower() in ("roll no", "roll number", "rollno", ""):
+                                continue
+                            results.append({
+                                "company": company,
+                                "roll_no": roll_no,
+                                "name": full_name,
+                                "date": parsed_date,
+                            })
+
+            except Exception as e:
+                logging.error(f"Error processing shortlist email UID {email_uid}: {e}")
+
+        mail.logout()
+        logging.info(f"Found {len(results)} shortlisted student entries from emails.")
+        return results
+
+    except Exception as e:
+        logging.error(f"IMAP connection error in fetch_shortlisted_students: {e}")
+        return []
