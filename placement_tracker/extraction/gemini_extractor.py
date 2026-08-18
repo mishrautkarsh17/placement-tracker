@@ -125,7 +125,7 @@ def extract_batch_from_emails(emails: list[dict]) -> list[dict]:
     
     try:
         response = client.models.generate_content(
-            model='gemini-3.5-flash-lite',
+            model='gemini-3.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -163,7 +163,7 @@ def extract_from_email(raw_html: str, subject: str = "") -> list[PlacementRecord
     
     try:
         response = client.models.generate_content(
-            model='gemini-3.5-flash-lite',
+            model='gemini-3.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -198,7 +198,7 @@ def extract_from_portal(raw_card_text: str, student_name: str, student_id: str) 
     
     try:
         response = client.models.generate_content(
-            model='gemini-3.5-flash-lite',
+            model='gemini-3.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
