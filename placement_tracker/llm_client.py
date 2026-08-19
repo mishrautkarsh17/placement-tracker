@@ -4,6 +4,10 @@ import logging
 from google import genai
 from google.genai import types
 
+# Per-key cooldown tracking: {key_index: cooldown_expiry_timestamp}
+_key_cooldowns: dict[int, float] = {}
+KEY_COOLDOWN_SECONDS = 600  # 10 minutes
+
 def get_api_keys() -> list[str]:
     # 1. Environment variable
     api_key_str = os.environ.get("GEMINI_API_KEY")
@@ -38,35 +42,51 @@ def generate_content_with_fallback(prompt: str, config: types.GenerateContentCon
     keys = get_api_keys()
     if not keys:
         raise ValueError("No GEMINI_API_KEY found in environment or secrets.")
-        
-    base_wait_time = 15
-    max_retries_per_key = 3
-    
-    # Attempt to cycle through keys if one hits a limit
-    for attempt in range(max_retries_per_key):
+
+    max_attempts = len(keys) * 3  # Give each key up to 3 full cycles
+
+    for attempt in range(max_attempts):
+        now = time.time()
+
+        # Find the next available (non-cooled-down) key
+        available_key = None
+        available_idx = None
         for key_idx, key in enumerate(keys):
-            try:
-                # Force SDK to NOT use GCP Application Default Credentials by explicitly passing vertexai=False
-                client = genai.Client(api_key=key, vertexai=False)
-                
-                response = client.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                    config=config
+            cooldown_until = _key_cooldowns.get(key_idx, 0)
+            if now >= cooldown_until:
+                available_key = key
+                available_idx = key_idx
+                break
+
+        if available_key is None:
+            # All keys are on cooldown — find the soonest one to expire and wait for it
+            soonest_expiry = min(_key_cooldowns.values())
+            wait_secs = max(0, soonest_expiry - now)
+            logging.warning(f"[LLM] All {len(keys)} Gemini keys are on cooldown. Waiting {wait_secs:.0f}s for next available key...")
+            time.sleep(wait_secs + 1)
+            continue
+
+        try:
+            client = genai.Client(api_key=available_key, vertexai=False)
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=config
+            )
+            return response
+
+        except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "quota" in err_str or "exhausted" in err_str or "rate limit" in err_str:
+                expiry = time.time() + KEY_COOLDOWN_SECONDS
+                _key_cooldowns[available_idx] = expiry
+                logging.warning(
+                    f"[LLM] Key {available_idx + 1}/{len(keys)} rate limited. "
+                    f"Cooling down for {KEY_COOLDOWN_SECONDS // 60} min. Trying next key..."
                 )
-                return response
-            except Exception as e:
-                err_str = str(e).lower()
-                if "429" in err_str or "quota" in err_str or "exhausted" in err_str or "rate limit" in err_str:
-                    logging.warning(f"API Key {key_idx+1}/{len(keys)} exhausted/rate limited. Trying next key...")
-                    continue
-                else:
-                    # If it's a structural error (400, etc), raise immediately
-                    raise e
-                    
-        # If we reach here, we exhausted all keys in this cycle.
-        wait_time = base_wait_time * (2 ** attempt)
-        logging.warning(f"All {len(keys)} Gemini keys hit rate limits. Waiting {wait_time}s before retrying...")
-        time.sleep(wait_time)
-        
-    raise Exception(f"All Gemini API keys failed after {max_retries_per_key} retry cycles due to rate limiting.")
+                continue
+            else:
+                # Structural error (400, auth, etc) — raise immediately, not a rate limit
+                raise e
+
+    raise Exception(f"All Gemini API keys failed after {max_attempts} attempts due to rate limiting.")

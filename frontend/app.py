@@ -306,21 +306,38 @@ with tab2:
 with tab3:
     st.header("Placement Analytics")
     
-    col_btn1, col_btn2 = st.columns(2)
+    col_btn1, col_btn2, col_btn3 = st.columns(3)
     with col_btn1:
-        if st.button("🔄 Sync Global Offers & CTC", use_container_width=True, type="primary"):
-            with st.spinner("Syncing offers from emails and pod.ai..."):
+        if st.button("📧 Sync Offers from Email", use_container_width=True, type="primary"):
+            with st.spinner("Syncing offer letters from Gmail..."):
                 try:
-                    req = requests.post(f"{API_URL}/sync-global-offers")
+                    req = requests.post(f"{API_URL}/sync-email-offers")
                     if req.status_code == 200:
-                        st.success("Successfully synced global offers and CTC!")
+                        res = req.json()
+                        st.success(f"Email sync done! {res.get('new_emails_found', 0)} emails → {res.get('email_records', 0)} records.")
+                        st.cache_data.clear()
                         st.rerun()
                     else:
                         st.error(f"Sync failed: {req.text}")
                 except Exception as e:
                     st.error(f"Sync failed: {e}")
-                    
+
     with col_btn2:
+        if st.button("🌐 Enrich CTC from pod.ai", use_container_width=True):
+            with st.spinner("Scraping pod.ai for CTC & offer type data... (takes ~2 min)"):
+                try:
+                    req = requests.post(f"{API_URL}/sync-ctc-enrichment", timeout=180)
+                    if req.status_code == 200:
+                        res = req.json()
+                        st.success(f"CTC enrichment done! {res.get('portal_records', 0)} records enriched.")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"Enrichment failed: {req.text}")
+                except Exception as e:
+                    st.error(f"Enrichment failed: {e}")
+
+    with col_btn3:
         if st.button("🗑️ Clear Sheet Data & Reset Cron", use_container_width=True):
             with st.spinner("Clearing sheets and resetting cron to 1st July..."):
                 try:

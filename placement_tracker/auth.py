@@ -41,11 +41,12 @@ def exchange_code_for_token(code):
     res = requests.post("https://oauth2.googleapis.com/token", data=data)
     if res.status_code == 200:
         token_data = res.json()
-        
+        refresh_token = token_data.get("refresh_token")
+
         # Build google.oauth2.credentials format
         creds_data = {
             "token": token_data.get("access_token"),
-            "refresh_token": token_data.get("refresh_token"),
+            "refresh_token": refresh_token,
             "token_uri": "https://oauth2.googleapis.com/token",
             "client_id": config.GOOGLE_CLIENT_ID,
             "client_secret": config.GOOGLE_CLIENT_SECRET,
@@ -54,27 +55,76 @@ def exchange_code_for_token(code):
         }
         with open(TOKEN_FILE, 'w') as f:
             json.dump(creds_data, f)
+
+        # Push refresh token to the backend so the cron watcher can use it for calendar sync.
+        # This keeps the cron self-sustaining — every login refreshes the backend's token.
+        if refresh_token:
+            try:
+                api_url = config.get_secret("API_URL", default="http://localhost:8000/api")
+                requests.post(
+                    f"{api_url}/store-refresh-token",
+                    json={"refresh_token": refresh_token},
+                    timeout=5
+                )
+                logging.info("[AUTH] Pushed refresh token to backend for cron use.")
+            except Exception as e:
+                logging.warning(f"[AUTH] Could not push refresh token to backend: {e}")
+
         return True
     else:
         logging.error(f"Failed to exchange token: {res.text}")
         return False
 
 def get_user_credentials():
-    """Gets valid user credentials from storage."""
+    """Gets valid user credentials from storage or from env var (for server deployments)."""
     creds = None
+
+    # 1. Try token file first (local dev / frontend-authenticated)
     if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-        
-    if creds and creds.expired and creds.refresh_token:
+        try:
+            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+        except Exception as e:
+            logging.warning(f"Could not load token file: {e}")
+
+    # 2. Fall back to GOOGLE_REFRESH_TOKEN env var (Render / server deployments)
+    if not creds:
+        refresh_token = os.environ.get("GOOGLE_REFRESH_TOKEN")
+        if not refresh_token:
+            # Also try config
+            try:
+                from placement_tracker.config import get_secret
+                refresh_token = get_secret("GOOGLE_REFRESH_TOKEN")
+            except Exception:
+                pass
+
+        if refresh_token:
+            try:
+                creds = Credentials(
+                    token=None,
+                    refresh_token=refresh_token.strip().strip("'\"\n"),
+                    token_uri="https://oauth2.googleapis.com/token",
+                    client_id=config.GOOGLE_CLIENT_ID,
+                    client_secret=config.GOOGLE_CLIENT_SECRET,
+                    scopes=SCOPES,
+                )
+                logging.info("[AUTH] Using GOOGLE_REFRESH_TOKEN from environment.")
+            except Exception as e:
+                logging.error(f"Failed to build credentials from refresh token: {e}")
+
+    # 3. Refresh if expired
+    if creds and (not creds.valid) and creds.refresh_token:
         try:
             creds.refresh(Request())
-            # Save updated creds
-            with open(TOKEN_FILE, 'w') as token:
-                token.write(creds.to_json())
+            # Persist back to file if we can
+            try:
+                with open(TOKEN_FILE, 'w') as token:
+                    token.write(creds.to_json())
+            except Exception:
+                pass  # Fine on Render, ephemeral fs
         except Exception as e:
             logging.error(f"Failed to refresh token: {e}")
             creds = None
-            
+
     return creds
 
 def get_user_profile():

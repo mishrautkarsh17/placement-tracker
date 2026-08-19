@@ -4,11 +4,16 @@ from pydantic import BaseModel
 import sys
 import os
 import io
+import logging
 
 # Ensure we can import from the existing project structure
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from placement_tracker.storage import sheets_client
+
+# In-memory store for the OAuth refresh token pushed by the frontend after login.
+# Falls back to GOOGLE_REFRESH_TOKEN env var if never set at runtime.
+_runtime_refresh_token: str | None = None
 
 router = APIRouter()
 
@@ -252,9 +257,25 @@ def get_company_info(company_name: str):
 def sync_calendar():
     try:
         res = sheets_client.sync_college_calendar()
+        data_cache.cache.clear()  # Calendar updated, invalidate cache
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+@router.post("/store-refresh-token")
+def store_refresh_token(req: RefreshTokenRequest):
+    """Called by the frontend after OAuth login to give the backend a refresh token.
+    This lets the cron watcher perform calendar sync without a user session."""
+    global _runtime_refresh_token
+    _runtime_refresh_token = req.refresh_token.strip()
+    # Also inject into environment so auth.py picks it up immediately
+    os.environ["GOOGLE_REFRESH_TOKEN"] = _runtime_refresh_token
+    logging.info("[AUTH] Runtime refresh token updated from frontend login.")
+    return {"success": True}
 
 class SyncAppRequest(BaseModel):
     pod_ai_username: str
@@ -277,14 +298,28 @@ def sync_applications(req: SyncAppRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/sync-global-offers")
-def sync_global_offers():
+@router.post("/sync-email-offers")
+def sync_email_offers():
+    """Syncs offer letters from Gmail only (lightweight, no Playwright)."""
+    from placement_tracker.pipeline import orchestrator
+    try:
+        res = orchestrator.sync_offer_letters()
+        data_cache.cache.clear()  # Invalidate cache so dashboard refreshes
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/sync-ctc-enrichment")
+def sync_ctc_enrichment():
+    """Scrapes pod.ai to enrich CTC and offer type data (heavy, uses Playwright)."""
     from placement_tracker.pipeline import orchestrator
     from placement_tracker.config import POD_AI_USERNAME, POD_AI_PASSWORD
+    if not POD_AI_USERNAME or not POD_AI_PASSWORD:
+        raise HTTPException(status_code=400, detail="Pod.ai credentials not configured.")
     try:
-        res_emails = orchestrator.sync_offer_letters()
-        res_ctc = orchestrator.sync_global_opportunities(POD_AI_USERNAME, POD_AI_PASSWORD)
-        return {"email_sync": res_emails, "ctc_sync": res_ctc}
+        res = orchestrator.sync_global_opportunities(POD_AI_USERNAME, POD_AI_PASSWORD)
+        data_cache.cache.clear()  # Invalidate cache so dashboard refreshes
+        return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -30,18 +30,18 @@ SCOPES = [
 def sync_calendar_auto():
     """
     Syncs the college calendar using the User OAuth token.
-    This works around the issue where college calendars are restricted
-    and cannot be shared with the background service account.
+    On local dev, uses user_token.json. On Render, uses GOOGLE_REFRESH_TOKEN env var.
     """
     try:
         logging.info("Starting calendar sync...")
         res = sheets_client.sync_college_calendar()
         if "error" in res:
-            logging.error(f"Calendar sync failed: {res['error']}")
+            logging.warning(f"Calendar sync could not complete: {res['error']}")
         else:
             logging.info(f"Calendar sync complete: {res.get('rows', 0)} rows written.")
     except Exception as e:
         logging.error(f"Calendar sync failed: {e}")
+
 
 
 def sync_ctc_enrichment():
