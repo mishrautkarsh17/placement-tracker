@@ -37,9 +37,19 @@ POD_AI_URL = get_secret("POD_AI_URL", default="https://iiitd.pod.ai")
 POD_AI_USERNAME = get_secret("POD_AI_USERNAME")
 POD_AI_PASSWORD = get_secret("POD_AI_PASSWORD")
 
-GOOGLE_CLIENT_ID = get_secret("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = get_secret("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = get_secret("GOOGLE_REDIRECT_URI", default="http://localhost:8501")
+def _get_local_google_creds():
+    import json
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "google_credentials.json"), "r") as f:
+            return json.load(f).get("web", {})
+    except Exception:
+        return {}
+
+_local_creds = _get_local_google_creds()
+
+GOOGLE_CLIENT_ID = get_secret("GOOGLE_CLIENT_ID") or _local_creds.get("client_id")
+GOOGLE_CLIENT_SECRET = get_secret("GOOGLE_CLIENT_SECRET") or _local_creds.get("client_secret")
+GOOGLE_REDIRECT_URI = get_secret("GOOGLE_REDIRECT_URI") or _local_creds.get("redirect_uris", ["http://localhost:8501"])[0]
 
 # Pod.ai Scraper Selectors (Placeholders to be updated)
 POD_AI_SELECTORS = {
