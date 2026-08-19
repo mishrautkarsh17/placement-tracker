@@ -306,6 +306,20 @@ with tab2:
 with tab3:
     st.header("Placement Analytics")
     
+    col_a, col_b = st.columns([3, 1])
+    with col_b:
+        if st.button("🔄 Sync Global Offers & CTC", use_container_width=True):
+            with st.spinner("Syncing offers from emails and pod.ai..."):
+                try:
+                    req = requests.post(f"{API_URL}/sync-global-offers")
+                    if req.status_code == 200:
+                        st.success("Successfully synced global offers and CTC!")
+                        st.rerun()
+                    else:
+                        st.error(f"Sync failed: {req.text}")
+                except Exception as e:
+                    st.error(f"Sync failed: {e}")
+                    
     analytics_data = fetch_analytics()
     
     col1, col2 = st.columns(2)

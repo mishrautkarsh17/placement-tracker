@@ -277,6 +277,16 @@ def sync_applications(req: SyncAppRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/sync-global-offers")
+def sync_global_offers():
+    from placement_tracker.pipeline import orchestrator
+    try:
+        res_emails = orchestrator.sync_offer_letters()
+        res_ctc = orchestrator.sync_global_opportunities()
+        return {"email_sync": res_emails, "ctc_sync": res_ctc}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/recommend-companies")
 async def recommend_companies(resume: UploadFile = File(...)):
     """Accepts a PDF resume upload, extracts text, and returns AI-powered company recommendations."""
