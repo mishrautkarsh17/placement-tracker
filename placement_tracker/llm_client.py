@@ -41,7 +41,9 @@ def generate_content_with_fallback(prompt: str, config: types.GenerateContentCon
     for attempt in range(max_retries_per_key):
         for key_idx, key in enumerate(keys):
             try:
-                client = genai.Client(api_key=key)
+                # Force SDK to NOT use GCP Application Default Credentials by explicitly passing vertexai=False
+                client = genai.Client(api_key=key, vertexai=False)
+                
                 response = client.models.generate_content(
                     model=model,
                     contents=prompt,
