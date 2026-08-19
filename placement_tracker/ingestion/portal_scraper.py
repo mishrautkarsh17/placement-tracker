@@ -25,8 +25,20 @@ def scrape(pod_ai_username: str, pod_ai_password: str, target_url: str = None) -
             # --- LOGIN ---
             # Try email/password fields
             try:
-                page.fill("input[type='email']", pod_ai_username, timeout=30000)
-                page.fill("input[type='password']", pod_ai_password, timeout=15000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(2000) # Give React a moment to settle DOM
+                
+                email_loc = page.locator("input[type='email']")
+                email_loc.wait_for(state="visible", timeout=30000)
+                email_loc.fill(pod_ai_username)
+                
+                pwd_loc = page.locator("input[type='password']")
+                pwd_loc.wait_for(state="visible", timeout=15000)
+                pwd_loc.fill(pod_ai_password)
+                
                 page.click("button[type='submit']")
                 page.wait_for_load_state("networkidle", timeout=20000)
                 page.wait_for_timeout(5000)
