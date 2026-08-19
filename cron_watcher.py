@@ -2,7 +2,6 @@ import time
 import logging
 import sys
 import os
-import gspread
 import gc
 from google.oauth2.service_account import Credentials
 from datetime import datetime
@@ -70,10 +69,6 @@ def main():
     logging.info(f"  Calendar sync:   every {CALENDAR_SYNC_INTERVAL // 60} min")
     logging.info(f"  CTC enrichment:  every {CTC_ENRICHMENT_INTERVAL // 60} min")
     logging.info("=" * 60)
-
-    # Ensure Playwright browsers are installed for Render
-    logging.info("Ensuring Playwright Chromium is installed...")
-    os.system("playwright install chromium")
 
     last_email_sync = 0
     last_calendar_sync = 0

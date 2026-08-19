@@ -38,60 +38,65 @@ def fetch_recent_offers(since_date_str: str) -> list[dict]:
         mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
         mail.select("inbox")
         
-        # Search for emails from the placement cell since the given date
-        search_criteria = f'(FROM "placement@iiitd.ac.in" SINCE "{since_date_str}")'
-        status, messages = mail.search(None, search_criteria)
-        
-        if status != 'OK' or not messages[0]:
-            logging.info("No recent emails found.")
-            return []
+        try:
+            # Search for emails from the placement cell since the given date
+            search_criteria = f'(FROM "placement@iiitd.ac.in" SINCE "{since_date_str}")'
+            status, messages = mail.search(None, search_criteria)
             
-        email_uids = messages[0].split()
-        results = []
-        logging.info(f"Found {len(email_uids)} recent emails. Fetching...")
-        
-        for email_uid in email_uids:
-            try:
-                # Fetch the email body
-                res, msg_data = mail.fetch(email_uid, '(RFC822)')
-                for response_part in msg_data:
-                    if isinstance(response_part, tuple):
-                        msg = email.message_from_bytes(response_part[1])
-                        
-                        subject, encoding = decode_header(msg["Subject"])[0]
-                        if isinstance(subject, bytes):
-                            subject = subject.decode(encoding if encoding else "utf-8")
-                            
-                        from email.utils import parsedate_to_datetime
-                        date_str = msg.get("Date", "")
-                        try:
-                            parsed_date = parsedate_to_datetime(date_str).strftime("%Y-%m-%d %H:%M:%S")
-                        except Exception:
-                            parsed_date = "N/A"
-                            
-                        raw_html = get_email_body_html(msg)
-                        if not raw_html:
-                            # Try getting plain text if html is missing
-                            if msg.is_multipart():
-                                for part in msg.walk():
-                                    if part.get_content_type() == "text/plain":
-                                        raw_html = part.get_payload(decode=True).decode(errors='ignore')
-                            else:
-                                raw_html = msg.get_payload(decode=True).decode(errors='ignore')
-                                
-                        results.append({
-                            "raw_html": raw_html,
-                            "subject": subject,
-                            "uid": email_uid.decode(),
-                            "date": parsed_date
-                        })
-                        
-                # We no longer mark emails as seen (\\Seen) to not mess with the user's inbox
-            except Exception as e:
-                logging.error(f"Error processing email UID {email_uid}: {e}")
+            if status != 'OK' or not messages[0]:
+                logging.info("No recent emails found.")
+                return []
                 
-        mail.logout()
-        return results
+            email_uids = messages[0].split()
+            results = []
+            logging.info(f"Found {len(email_uids)} recent emails. Fetching...")
+            
+            for email_uid in email_uids:
+                try:
+                    # Fetch the email body
+                    res, msg_data = mail.fetch(email_uid, '(RFC822)')
+                    for response_part in msg_data:
+                        if isinstance(response_part, tuple):
+                            msg = email.message_from_bytes(response_part[1])
+                            
+                            subject, encoding = decode_header(msg["Subject"])[0]
+                            if isinstance(subject, bytes):
+                                subject = subject.decode(encoding if encoding else "utf-8")
+                                
+                            from email.utils import parsedate_to_datetime
+                            date_str = msg.get("Date", "")
+                            try:
+                                parsed_date = parsedate_to_datetime(date_str).strftime("%Y-%m-%d %H:%M:%S")
+                            except Exception:
+                                parsed_date = "N/A"
+                                
+                            raw_html = get_email_body_html(msg)
+                            if not raw_html:
+                                # Try getting plain text if html is missing
+                                if msg.is_multipart():
+                                    for part in msg.walk():
+                                        if part.get_content_type() == "text/plain":
+                                            raw_html = part.get_payload(decode=True).decode(errors='ignore')
+                                else:
+                                    raw_html = msg.get_payload(decode=True).decode(errors='ignore')
+                                    
+                            results.append({
+                                "raw_html": raw_html,
+                                "subject": subject,
+                                "uid": email_uid.decode(),
+                                "date": parsed_date
+                            })
+                            
+                    # We no longer mark emails as seen (\\Seen) to not mess with the user's inbox
+                except Exception as e:
+                    logging.error(f"Error processing email UID {email_uid}: {e}")
+                    
+            return results
+        finally:
+            try:
+                mail.logout()
+            except Exception:
+                pass
         
     except Exception as e:
         logging.error(f"IMAP connection error: {e}")
