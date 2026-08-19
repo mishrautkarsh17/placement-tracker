@@ -18,19 +18,26 @@ API_URL = st.secrets.get("API_URL", "http://localhost:8000/api")
 
 # --- CACHED DATA FETCHERS ---
 # This prevents the app from re-fetching from the network on every button click
+FETCH_TIMEOUT = 10  # seconds — all API calls fail fast instead of hanging
+
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_daily_brief(roll_no):
     try:
-        res = requests.get(f"{API_URL}/daily-brief/{roll_no}")
+        res = requests.get(f"{API_URL}/daily-brief/{roll_no}", timeout=FETCH_TIMEOUT)
         return res.json().get("brief", "Could not generate brief.")
+    except requests.exceptions.Timeout:
+        return "⚠️ Daily brief timed out — the backend may be slow. Try refreshing."
     except Exception as e:
         return f"Failed to load daily brief: {e}"
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_calendar():
     try:
-        req = requests.get(f"{API_URL}/calendar")
+        req = requests.get(f"{API_URL}/calendar", timeout=FETCH_TIMEOUT)
         return pd.DataFrame(req.json().get("data", []))
+    except requests.exceptions.Timeout:
+        st.warning("Calendar request timed out. Is the backend running?")
+        return pd.DataFrame()
     except Exception as e:
         st.error(f"Failed to fetch calendar from API: {e}")
         return pd.DataFrame()
@@ -38,8 +45,11 @@ def fetch_calendar():
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_analytics():
     try:
-        req = requests.get(f"{API_URL}/analytics")
+        req = requests.get(f"{API_URL}/analytics", timeout=FETCH_TIMEOUT)
         return req.json()
+    except requests.exceptions.Timeout:
+        st.warning("Analytics request timed out. Is the backend running?")
+        return {}
     except Exception as e:
         st.error(f"Failed to fetch analytics from API: {e}")
         return {}
@@ -47,8 +57,11 @@ def fetch_analytics():
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_offers():
     try:
-        req = requests.get(f"{API_URL}/offers")
+        req = requests.get(f"{API_URL}/offers", timeout=FETCH_TIMEOUT)
         return pd.DataFrame(req.json().get("data", []))
+    except requests.exceptions.Timeout:
+        st.warning("Offers request timed out. Is the backend running?")
+        return pd.DataFrame()
     except Exception as e:
         st.error(f"Failed to fetch offers from API: {e}")
         return pd.DataFrame()
@@ -56,8 +69,11 @@ def fetch_offers():
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_applications(roll_no):
     try:
-        req = requests.get(f"{API_URL}/applications/{roll_no}")
+        req = requests.get(f"{API_URL}/applications/{roll_no}", timeout=FETCH_TIMEOUT)
         return pd.DataFrame(req.json().get("data", []))
+    except requests.exceptions.Timeout:
+        st.warning("Applications request timed out. Is the backend running?")
+        return pd.DataFrame()
     except Exception as e:
         st.error(f"Failed to fetch applications from API: {e}")
         return pd.DataFrame()
@@ -138,31 +154,60 @@ if 'roll_no' not in st.session_state or 'name' not in st.session_state:
     st.title("🎓 Welcome to Placement Tracker")
     st.write("Please authenticate with your IIITD Google account to securely load your dashboard.")
     
-    # Check for OAuth callback code in URL
+    # Check for OAuth callback code in URL — only do the network round-trip when code is present
     if "code" in st.query_params:
         with st.spinner("Authenticating..."):
             if exchange_code_for_token(st.query_params["code"]):
                 st.query_params.clear()
+                # Now immediately try to load the profile so we don't loop back here
+                try:
+                    profile = get_user_profile()
+                    if profile:
+                        st.session_state['name'] = profile.get("name", "Unknown")
+                        email = profile.get("email", "")
+                        st.session_state['roll_no'] = "".join(filter(str.isdigit, email))
+                        st.rerun()
+                except Exception:
+                    pass
             else:
                 st.error("Authentication failed. Please try again.")
-                
-    # If we have valid credentials, fetch profile
-    creds = get_user_credentials()
-    if creds and creds.valid:
-        with st.spinner("Loading profile..."):
-            profile = get_user_profile()
+
+    # Only attempt a credential check if a token file already exists on disk.
+    # This avoids blocking the entire page with a spinner on every cold load.
+    import os as _os
+    token_file_exists = _os.path.exists('user_token.json')
+    if token_file_exists and "code" not in st.query_params:
+        creds = get_user_credentials()
+        if creds and creds.valid:
+            with st.spinner("Loading profile..."):
+                try:
+                    profile = get_user_profile()
+                except Exception:
+                    profile = None
             if profile:
                 st.session_state['name'] = profile.get("name", "Unknown")
                 email = profile.get("email", "")
-                
                 # Extract roll number from email (e.g., utkarsh23571@iiitd.ac.in -> 23571)
                 roll_no = "".join(filter(str.isdigit, email))
                 st.session_state['roll_no'] = roll_no
                 st.rerun()
             else:
-                st.error("Could not fetch profile information.")
-    else:
-        # Show login button
+                st.error("Could not fetch profile information. Your session may have expired — please log in again.")
+                # Remove the stale token so we don't loop into this branch every time
+                try:
+                    _os.remove('user_token.json')
+                except Exception:
+                    pass
+                st.link_button("Login with Google", get_oauth_url(), type="primary")
+        else:
+            # Token exists but is invalid/expired and couldn't refresh — clear it
+            try:
+                _os.remove('user_token.json')
+            except Exception:
+                pass
+            st.link_button("Login with Google", get_oauth_url(), type="primary")
+    elif not token_file_exists:
+        # No token at all — show the login button immediately with no spinner
         st.link_button("Login with Google", get_oauth_url(), type="primary")
                 
     st.write("---")
