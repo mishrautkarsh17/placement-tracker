@@ -44,6 +44,10 @@ app.add_middleware(
 async def health_check():
     return {"status": "ok", "message": "AI Placement Copilot is running"}
 
+@app.get("/")
+async def root_check():
+    return {"status": "ok", "message": "API is running. See /docs for more info."}
+
 from api import routes
 app.include_router(routes.router, prefix="/api")
 
