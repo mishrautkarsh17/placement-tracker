@@ -40,7 +40,7 @@ def generate_copilot_response(user_message: str, context_data: dict) -> str:
         return response.text
     except Exception as e:
         logging.error(f"Gemini generation error: {e}")
-        return "I'm having trouble connecting to my AI brain right now. Please try again later."
+        return "I'm having trouble connecting to my AI brain right now (Google Gemini API Rate Limit Exceeded). Please wait a few minutes and try again later."
 
 
 def generate_resume_recommendation(resume_text: str, active_companies: list[dict]) -> str:
@@ -83,5 +83,5 @@ ACTIVE COMPANIES ON CAMPUS:
         response = generate_content_with_fallback(prompt=prompt)
         return response.text
     except Exception as e:
-        logging.error(f"Gemini resume recommendation error: {e}")
-        return "I'm having trouble analysing your resume right now. Please try again later."
+        logging.error(f"Gemini generation error in resume matcher: {e}")
+        return "I'm having trouble analysing your resume right now (Google Gemini API Rate Limit Exceeded). Please wait a few minutes and try again later."
