@@ -26,8 +26,13 @@ def get_api_keys() -> list[str]:
     if not api_key_str:
         return []
     
-    # Support multiple comma-separated keys, aggressively strip quotes and spaces
-    return [k.strip().strip("'\"").strip() for k in api_key_str.split(",") if k.strip().strip("'\"").strip()]
+    # Render sometimes wraps the entire env var value in quotes, e.g. '"key1,key2"'
+    # Strip outer quotes from the full string first, THEN split on comma
+    api_key_str = api_key_str.strip().strip("'\"").strip()
+    
+    keys = [k.strip().strip("'\"").strip() for k in api_key_str.split(",") if k.strip().strip("'\"").strip()]
+    logging.info(f"[LLM] Loaded {len(keys)} Gemini API key(s).")
+    return keys
 
 def generate_content_with_fallback(prompt: str, config: types.GenerateContentConfig = None, model: str = 'gemini-3.5-flash'):
     keys = get_api_keys()
