@@ -15,7 +15,15 @@ def scrape(pod_ai_username: str, pod_ai_password: str, target_url: str = None) -
     results = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-gpu",
+            ]
+        )
         page = browser.new_page()
 
         try:

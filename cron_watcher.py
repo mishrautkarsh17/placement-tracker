@@ -3,6 +3,7 @@ import logging
 import sys
 import os
 import gspread
+import gc
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
@@ -120,6 +121,9 @@ def main():
             last_ctc_sync = time.time()
 
         first_run = False
+
+        # Force garbage collection to prevent memory creeping over time
+        gc.collect()
 
         # Sleep in short intervals to stay responsive
         logging.info(f"[AGENT] Next check in 60s...")
