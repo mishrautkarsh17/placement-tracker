@@ -5,7 +5,7 @@ def get_secret(key, default=None):
     # 1. Check environment variable (used by GitHub Actions)
     env_val = os.environ.get(key)
     if env_val:
-        return env_val
+        return env_val.strip().strip("'\"").strip()
     
     # 2. Check Streamlit secrets (used by Streamlit Cloud / local dev)
     try:
