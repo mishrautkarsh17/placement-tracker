@@ -40,11 +40,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "ok", "message": "AI Placement Copilot is running"}
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root_check():
     return {"status": "ok", "message": "API is running. See /docs for more info."}
 
