@@ -287,6 +287,14 @@ def sync_global_offers():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/clear-offers")
+def clear_offers():
+    from placement_tracker.storage import sheets_client
+    try:
+        return sheets_client.clear_all_offers()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/recommend-companies")
 async def recommend_companies(resume: UploadFile = File(...)):
     """Accepts a PDF resume upload, extracts text, and returns AI-powered company recommendations."""

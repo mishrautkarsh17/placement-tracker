@@ -287,7 +287,7 @@ def _upsert_offers_to_tab(records: list[PlacementRecord], tab_name: str):
         if len(dedup_map) == 0:
             worksheet.insert_row(OFFERS_HEADERS, index=1)
         # Append new rows at the bottom
-        worksheet.append_rows(new_rows)
+        worksheet.append_rows(new_rows, insert_data_option='INSERT_ROWS')
 
 def upsert_offers(records: list[PlacementRecord]):
     """Upserts a list of PlacementRecord into Offers or MTech offers based on student ID."""
@@ -490,7 +490,7 @@ def upsert_applications(records: list[PlacementRecord]):
         if len(dedup_map) == 0:
             worksheet.insert_row(APPLICATIONS_HEADERS, index=1)
         # Append new rows at the bottom
-        worksheet.append_rows(new_rows)
+        worksheet.append_rows(new_rows, insert_data_option='INSERT_ROWS')
 
 
 def write_last_sync_time(timestamp: str):
@@ -568,5 +568,29 @@ def update_interview_status(shortlisted: list[dict]):
     if new_rows:
         if not existing_records:
             worksheet.insert_row(APPLICATIONS_HEADERS, index=1)
-        worksheet.append_rows(new_rows)
+        worksheet.append_rows(new_rows, insert_data_option='INSERT_ROWS')
         logging.info(f"Inserted {len(new_rows)} new Interviewing rows.")
+
+def clear_all_offers():
+    """Clears all data from Offers and MTech Offers tabs, and resets the sync state."""
+    for tab_name in [OFFERS_SHEET_TAB, MTECH_OFFERS_SHEET_TAB]:
+        ws = _get_worksheet(tab_name)
+        if ws:
+            try:
+                # Keep headers (row 1), clear from row 2 downwards
+                ws.batch_clear(["A2:Z1000"])
+            except Exception as e:
+                logging.error(f"Error clearing tab {tab_name}: {e}")
+                
+    # Reset last sync time to 1st July 2026
+    write_last_sync_time("01-Jul-2026 00:00:00")
+    
+    # Also delete the local sync state file if it exists
+    import os
+    state_file = os.path.join(os.path.dirname(__file__), '..', '..', '.sync_state.json')
+    if os.path.exists(state_file):
+        try:
+            os.remove(state_file)
+        except Exception:
+            pass
+    return {"success": True, "message": "Offers cleared and sync reset to 1st July 2026"}
