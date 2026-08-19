@@ -28,16 +28,17 @@ def scrape(pod_ai_username: str, pod_ai_password: str, target_url: str = None) -
 
         try:
             logging.info(f"Navigating to {POD_AI_URL}")
-            page.goto(POD_AI_URL, wait_until="networkidle", timeout=30000)
+            # Use domcontentloaded — networkidle hangs forever on React SPAs with polling
+            page.goto(POD_AI_URL, wait_until="domcontentloaded", timeout=60000)
 
             # --- LOGIN ---
             # Try email/password fields
             try:
                 try:
-                    page.wait_for_load_state("networkidle", timeout=10000)
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
                 except Exception:
                     pass
-                page.wait_for_timeout(2000) # Give React a moment to settle DOM
+                page.wait_for_timeout(3000)  # Give React a moment to settle DOM
                 
                 email_loc = page.locator("input[type='email']")
                 email_loc.wait_for(state="visible", timeout=30000)
@@ -48,7 +49,10 @@ def scrape(pod_ai_username: str, pod_ai_password: str, target_url: str = None) -
                 pwd_loc.fill(pod_ai_password)
                 
                 page.click("button[type='submit']")
-                page.wait_for_load_state("networkidle", timeout=20000)
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=20000)
+                except Exception:
+                    pass
                 page.wait_for_timeout(5000)
                 logging.info("Login submitted and waited 5s.")
             except Exception as e:
@@ -58,14 +62,15 @@ def scrape(pod_ai_username: str, pod_ai_password: str, target_url: str = None) -
             try:
                 final_url = target_url if target_url else f"{POD_AI_URL}/d/HjFzVC/applications/"
                 logging.info(f"Navigating to {final_url}")
-                page.goto(final_url, wait_until="networkidle", timeout=20000)
+                page.goto(final_url, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(3000)  # Extra wait for React to render cards
                 logging.info(f"Navigated to target tab: {final_url}")
                 
                 if not target_url:
                     # Try clicking the Applications sub-tab
                     try:
                         page.locator("text=Applications").first.click(timeout=5000)
-                        page.wait_for_load_state("networkidle", timeout=10000)
+                        page.wait_for_load_state("domcontentloaded", timeout=10000)
                         logging.info("Clicked Applications sub-tab.")
                     except Exception:
                         logging.warning("Could not click Applications sub-tab, continuing on Opportunities page.")
