@@ -62,12 +62,11 @@ def generate_content_with_fallback(prompt: str, config: types.GenerateContentCon
                 break
 
         if available_key is None:
-            # All keys are on cooldown — find the soonest one to expire and wait for it
+            # All keys are on cooldown — do not block the web server! Fail fast.
             soonest_expiry = min(_key_cooldowns.values())
             wait_secs = max(0, soonest_expiry - now)
-            logging.warning(f"[LLM] All {len(keys)} Gemini keys are on cooldown. Waiting {wait_secs:.0f}s for next available key...")
-            time.sleep(wait_secs + 1)
-            continue
+            logging.error(f"[LLM] All {len(keys)} Gemini keys are on cooldown. Next available in {wait_secs:.0f}s.")
+            raise Exception("All Gemini API keys are currently rate-limited (429 Quota Exceeded).")
 
         try:
             client = genai.Client(api_key=available_key, vertexai=False)
