@@ -28,62 +28,17 @@ SCOPES = [
 
 def sync_calendar_auto():
     """
-    Syncs the college calendar using the service account (no OAuth needed).
-    The college calendar sheet must be shared with the service account email.
+    Syncs the college calendar using the User OAuth token.
+    This works around the issue where college calendars are restricted
+    and cannot be shared with the background service account.
     """
-    if not COLLEGE_CALENDAR_SHEET_ID:
-        logging.warning("COLLEGE_CALENDAR_SHEET_ID not configured, skipping calendar sync.")
-        return
-
     try:
-        import streamlit as st
-        creds = Credentials.from_service_account_info(
-            st.secrets["gcp_service_account"].to_dict(),
-            scopes=SCOPES
-        )
-    except Exception:
-        # Fallback: try loading from env or file
-        try:
-            import os, json
-            sa_json = os.environ.get("GCP_SERVICE_ACCOUNT_JSON")
-            sa_path = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "service_account.json")
-            
-            if sa_json:
-                creds = Credentials.from_service_account_info(json.loads(sa_json), scopes=SCOPES)
-            elif os.path.exists(sa_path):
-                creds = Credentials.from_service_account_file(sa_path, scopes=SCOPES)
-            else:
-                logging.error("No service account credentials available for calendar sync.")
-                return
-        except Exception as e:
-            logging.error(f"Could not load service account: {e}")
-            return
-
-    try:
-        gc = gspread.authorize(creds)
-
-        # Read the college calendar
-        college_sheet = gc.open_by_key(COLLEGE_CALENDAR_SHEET_ID)
-        college_ws = college_sheet.get_worksheet(0)
-        all_values = college_ws.get_all_values()
-
-        if not all_values:
-            logging.warning("College calendar is empty.")
-            return
-
-        # Write to our local sheet
-        local_sheet = gc.open_by_key(GOOGLE_SHEET_ID)
-        local_ws = None
-        for ws in local_sheet.worksheets():
-            if ws.title.lower() == CALENDAR_SHEET_TAB.lower():
-                local_ws = ws
-                break
-        if not local_ws:
-            local_ws = local_sheet.add_worksheet(title=CALENDAR_SHEET_TAB, rows=1000, cols=15)
-
-        local_ws.clear()
-        local_ws.update(values=all_values, range_name="A1")
-        logging.info(f"Calendar sync complete: {len(all_values)} rows written.")
+        logging.info("Starting calendar sync...")
+        res = sheets_client.sync_college_calendar()
+        if "error" in res:
+            logging.error(f"Calendar sync failed: {res['error']}")
+        else:
+            logging.info(f"Calendar sync complete: {res.get('rows', 0)} rows written.")
     except Exception as e:
         logging.error(f"Calendar sync failed: {e}")
 

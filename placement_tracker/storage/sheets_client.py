@@ -268,8 +268,12 @@ def _upsert_offers_to_tab(records: list[PlacementRecord], tab_name: str):
             if key in existing_map:
                 existing = existing_map[key]
                 # row_data[3] = offer_type, row_data[4] = ctc
-                if row_data[3] in ("N/A", "") and existing.get("offer_type", "") not in ("N/A", ""):
-                    row_data[3] = existing.get("offer_type", "")
+                existing_offer = existing.get("offer_type", "")
+                if row_data[3] == "PPO":
+                    pass # Always trust PPO from email
+                elif existing_offer not in ("N/A", ""):
+                    row_data[3] = existing_offer # Keep existing (likely from Pod.ai)
+
                 if row_data[4] in ("N/A", "") and existing.get("ctc", "") not in ("N/A", ""):
                     row_data[4] = existing.get("ctc", "")
             
@@ -287,7 +291,7 @@ def _upsert_offers_to_tab(records: list[PlacementRecord], tab_name: str):
         if len(dedup_map) == 0:
             worksheet.insert_row(OFFERS_HEADERS, index=1)
         # Append new rows at the bottom
-        worksheet.append_rows(new_rows, insert_data_option='INSERT_ROWS')
+        worksheet.append_rows(new_rows, insert_data_option='INSERT_ROWS', table_range="A1")
 
 def upsert_offers(records: list[PlacementRecord]):
     """Upserts a list of PlacementRecord into Offers or MTech offers based on student ID."""
@@ -378,8 +382,9 @@ def enrich_offers_with_ctc(applications: list[PlacementRecord]):
                     needs_update = True
                     row["ctc"] = new_ctc
                 if new_offer and new_offer != "N/A" and new_offer != current_offer:
-                    needs_update = True
-                    row["offer_type"] = new_offer
+                    if current_offer != "PPO":
+                        needs_update = True
+                        row["offer_type"] = new_offer
                     
                 if needs_update:
                     row_data = [row.get(h, "") for h in headers]
@@ -490,7 +495,7 @@ def upsert_applications(records: list[PlacementRecord]):
         if len(dedup_map) == 0:
             worksheet.insert_row(APPLICATIONS_HEADERS, index=1)
         # Append new rows at the bottom
-        worksheet.append_rows(new_rows, insert_data_option='INSERT_ROWS')
+        worksheet.append_rows(new_rows, insert_data_option='INSERT_ROWS', table_range="A1")
 
 
 def write_last_sync_time(timestamp: str):
@@ -568,7 +573,7 @@ def update_interview_status(shortlisted: list[dict]):
     if new_rows:
         if not existing_records:
             worksheet.insert_row(APPLICATIONS_HEADERS, index=1)
-        worksheet.append_rows(new_rows, insert_data_option='INSERT_ROWS')
+        worksheet.append_rows(new_rows, insert_data_option='INSERT_ROWS', table_range="A1")
         logging.info(f"Inserted {len(new_rows)} new Interviewing rows.")
 
 def clear_all_offers():

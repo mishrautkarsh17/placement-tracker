@@ -1,12 +1,8 @@
 import json
-from google import genai
 from google.genai import types
-from placement_tracker.config import GEMINI_API_KEY
 from placement_tracker.schema import PlacementRecord
+from placement_tracker.llm_client import generate_content_with_fallback
 
-# Initialize Gemini Client if key is provided (otherwise initialized locally)
-client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
-    
 BATCH_EMAIL_PROMPT = """
 You are a university placement data extraction assistant.
 Below are emails from a university placement cell, each separated by ---EMAIL_BREAK---.
@@ -27,9 +23,9 @@ Rules:
     Otherwise → "Applied"
 - offer_type:
     Contains "PPO" or "Pre-Placement Offer" → "PPO"
+    Contains both internship and full-time (or "Intern+FT") → "Intern+FT"
     Contains "Full Time" or "FTE" or "full-time" → "FT"
-    Contains "Internship" → "Intern"
-    Contains both internship and full-time → "Intern+FT"
+    Contains "Internship" or "intern" → "Intern"
     Otherwise → "N/A"
 - ctc: Extract CTC/salary/package. Convert INR to LPA (e.g., INR 22,00,000 = "22 LPA"). Monthly stipend → "50K/month". If absent → "N/A".
 - IMPORTANT: If the email has no HTML table with student Roll Numbers, it is NOT a placement record email. Return [] for that email — do NOT create rows with Unknown values.
@@ -60,9 +56,9 @@ Rules:
     Otherwise → "Applied"
 - offer_type:
     Contains "PPO" or "Pre-Placement Offer" → "PPO"
+    Contains both internship and full-time (or "Intern+FT") → "Intern+FT"
     Contains "Full Time" or "FTE" or "full-time" → "FT"
-    Contains "Internship" → "Intern"
-    Contains both internship and full-time → "Intern+FT"
+    Contains "Internship" or "intern" → "Intern"
     Otherwise → "N/A"
 - ctc: Extract CTC/salary. Convert INR to LPA. Stipend → "50K/month". If absent → "N/A".
 - IMPORTANT: If the email body has no HTML table with student Roll Numbers, this is NOT a placement record email. Return [].
@@ -85,7 +81,8 @@ Extract ALL job/opportunity cards and return a JSON array where each element mat
 Rules:
 - company_name: Extract the name of the company hiring.
 - offer_type: Look for Job type tags:
-    "Internship + Full-Time" or "Internship+ Full time" → "Intern+FT"
+    "PPO" or "Pre-Placement Offer" → "PPO"
+    "Internship + Full-Time" or "Internship+ Full time" or "Intern+FT" → "Intern+FT"
     "Full-Time" or "Full time" → "FT"
     "Internship" only → "Intern"
     If unclear → "N/A"
@@ -105,14 +102,12 @@ def extract_batch_from_emails(emails: list[dict]) -> list[dict]:
     Sends ALL emails to Gemini in a SINGLE call and returns a list of PlacementRecord objects.
     emails: list of {'raw_html': str, 'subject': str, 'date': str, 'uid': str}
     """
-    if not client:
-        raise ValueError("GEMINI_API_KEY is not set.")
     if not emails:
         return []
 
     schema_json = PlacementRecord.schema_json()
     
-    # Build a combined block — now includes Subject line for company name extraction
+    # Build a combined block
     parts = []
     for i, e in enumerate(emails):
         subject = e.get('subject', 'No Subject')
@@ -124,9 +119,8 @@ def extract_batch_from_emails(emails: list[dict]) -> list[dict]:
     prompt = BATCH_EMAIL_PROMPT.format(schema=schema_json, emails_block=emails_block)
     
     try:
-        response = client.models.generate_content(
-            model='gemini-3.5-flash',
-            contents=prompt,
+        response = generate_content_with_fallback(
+            prompt=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
             )
@@ -154,17 +148,13 @@ def extract_batch_from_emails(emails: list[dict]) -> list[dict]:
 
 def extract_from_email(raw_html: str, subject: str = "") -> list[PlacementRecord]:
     """Extracts a list of PlacementRecord from email HTML + subject using Gemini."""
-    if not client:
-        raise ValueError("GEMINI_API_KEY is not set.")
-        
     schema_json = PlacementRecord.schema_json()
     email_block = f"SUBJECT: {subject}\n\nBODY:\n{raw_html}"
     prompt = EMAIL_PROMPT.format(schema=schema_json, email_block=email_block)
     
     try:
-        response = client.models.generate_content(
-            model='gemini-3.5-flash',
-            contents=prompt,
+        response = generate_content_with_fallback(
+            prompt=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
             )
@@ -190,16 +180,12 @@ def extract_from_email(raw_html: str, subject: str = "") -> list[PlacementRecord
 
 def extract_from_portal(raw_card_text: str, student_name: str, student_id: str) -> list[PlacementRecord]:
     """Extracts PlacementRecord(s) from pod.ai card/page text using Gemini. Returns a list."""
-    if not client:
-        raise ValueError("GEMINI_API_KEY is not set.")
-        
     schema_json = PlacementRecord.schema_json()
     prompt = PORTAL_PROMPT.format(schema=schema_json, raw_card_text=raw_card_text)
     
     try:
-        response = client.models.generate_content(
-            model='gemini-3.5-flash',
-            contents=prompt,
+        response = generate_content_with_fallback(
+            prompt=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
             )

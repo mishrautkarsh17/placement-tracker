@@ -280,9 +280,10 @@ def sync_applications(req: SyncAppRequest):
 @router.post("/sync-global-offers")
 def sync_global_offers():
     from placement_tracker.pipeline import orchestrator
+    from placement_tracker.config import POD_AI_USERNAME, POD_AI_PASSWORD
     try:
         res_emails = orchestrator.sync_offer_letters()
-        res_ctc = orchestrator.sync_global_opportunities()
+        res_ctc = orchestrator.sync_global_opportunities(POD_AI_USERNAME, POD_AI_PASSWORD)
         return {"email_sync": res_emails, "ctc_sync": res_ctc}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

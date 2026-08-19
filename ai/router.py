@@ -1,23 +1,9 @@
-from google import genai
-from google.genai import types
 import os
 import json
 import logging
+from google.genai import types
 from ai.prompts import SYSTEM_PROMPT
-
-def get_gemini_client():
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        try:
-            import streamlit as st
-            api_key = st.secrets.get("GEMINI_API_KEY")
-        except Exception:
-            pass
-    
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY not found in environment or secrets.")
-        
-    return genai.Client(api_key=api_key)
+from placement_tracker.llm_client import generate_content_with_fallback
 
 def route_query(user_message: str) -> dict:
     """
@@ -40,16 +26,13 @@ def route_query(user_message: str) -> dict:
 def generate_copilot_response(user_message: str, context_data: dict) -> str:
     """Calls Gemini with the context data to answer the user's question."""
     try:
-        client = get_gemini_client()
-        
         # Format context data nicely
         context_str = json.dumps(context_data, indent=2)
         
         full_prompt = f"{SYSTEM_PROMPT}\n\nContext Data:\n{context_str}\n\nUser Question: {user_message}"
         
-        response = client.models.generate_content(
-            model='gemini-3.5-flash',
-            contents=full_prompt,
+        response = generate_content_with_fallback(
+            prompt=full_prompt,
             config=types.GenerateContentConfig(
                 tools=[types.Tool(google_search=types.GoogleSearch())]
             )
@@ -66,8 +49,6 @@ def generate_resume_recommendation(resume_text: str, active_companies: list[dict
     and returns a ranked list of best-fit companies with preparation tips.
     """
     try:
-        client = get_gemini_client()
-
         companies_str = json.dumps(active_companies, indent=2)
 
         prompt = f"""You are an expert university placement advisor and career counselor.
@@ -99,10 +80,7 @@ STUDENT RESUME:
 ACTIVE COMPANIES ON CAMPUS:
 {companies_str}
 """
-        response = client.models.generate_content(
-            model='gemini-3.5-flash',
-            contents=prompt,
-        )
+        response = generate_content_with_fallback(prompt=prompt)
         return response.text
     except Exception as e:
         logging.error(f"Gemini resume recommendation error: {e}")
