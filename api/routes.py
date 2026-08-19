@@ -1,10 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
-from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 import sys
 import os
 import io
 import logging
+import uuid
+import time
 
 # Ensure we can import from the existing project structure
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -14,6 +16,10 @@ from placement_tracker.storage import sheets_client
 # In-memory store for the OAuth refresh token pushed by the frontend after login.
 # Falls back to GOOGLE_REFRESH_TOKEN env var if never set at runtime.
 _runtime_refresh_token: str | None = None
+
+# Background job tracker for long-running tasks like CTC enrichment.
+# {job_id: {"status": "running"|"done"|"error", "result": ..., "started_at": float}}
+_jobs: dict[str, dict] = {}
 
 router = APIRouter()
 
@@ -310,18 +316,37 @@ def sync_email_offers():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/sync-ctc-enrichment")
-def sync_ctc_enrichment():
-    """Scrapes pod.ai to enrich CTC and offer type data (heavy, uses Playwright)."""
-    from placement_tracker.pipeline import orchestrator
+def sync_ctc_enrichment(background_tasks: BackgroundTasks):
+    """Kicks off a background pod.ai scrape for CTC enrichment. Returns immediately with a job_id."""
     from placement_tracker.config import POD_AI_USERNAME, POD_AI_PASSWORD
     if not POD_AI_USERNAME or not POD_AI_PASSWORD:
         raise HTTPException(status_code=400, detail="Pod.ai credentials not configured.")
-    try:
-        res = orchestrator.sync_global_opportunities(POD_AI_USERNAME, POD_AI_PASSWORD)
-        data_cache.cache.clear()  # Invalidate cache so dashboard refreshes
-        return res
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+    job_id = str(uuid.uuid4())[:8]
+    _jobs[job_id] = {"status": "running", "result": None, "started_at": time.time()}
+
+    def _run(jid: str):
+        from placement_tracker.pipeline import orchestrator
+        try:
+            res = orchestrator.sync_global_opportunities(POD_AI_USERNAME, POD_AI_PASSWORD)
+            data_cache.cache.clear()
+            _jobs[jid] = {"status": "done", "result": res, "started_at": _jobs[jid]["started_at"]}
+            logging.info(f"[CTC] Background job {jid} complete: {res.get('portal_records', 0)} records.")
+        except Exception as e:
+            _jobs[jid] = {"status": "error", "result": {"error": str(e)}, "started_at": _jobs[jid]["started_at"]}
+            logging.error(f"[CTC] Background job {jid} failed: {e}")
+
+    background_tasks.add_task(_run, job_id)
+    return {"job_id": job_id, "status": "running", "message": "CTC enrichment started in background. Poll /sync-ctc-enrichment/status?job_id={job_id} for result."}
+
+@router.get("/sync-ctc-enrichment/status")
+def sync_ctc_enrichment_status(job_id: str):
+    """Poll the status of a background CTC enrichment job."""
+    if job_id not in _jobs:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    job = _jobs[job_id]
+    elapsed = round(time.time() - job["started_at"])
+    return {"job_id": job_id, "status": job["status"], "elapsed_seconds": elapsed, "result": job["result"]}
 
 @router.post("/clear-offers")
 def clear_offers():

@@ -1,7 +1,6 @@
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
-import streamlit as st
 import logging
 
 from placement_tracker.config import (
@@ -28,8 +27,9 @@ def _get_client():
     
     creds = None
     
-    # 1. Try Streamlit secrets
+    # 1. Try Streamlit secrets (only when running inside a Streamlit process)
     try:
+        import streamlit as st
         if st.secrets and "gcp_service_account" in st.secrets:
             creds = Credentials.from_service_account_info(
                 st.secrets["gcp_service_account"].to_dict(),

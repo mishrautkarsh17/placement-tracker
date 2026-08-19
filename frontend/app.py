@@ -324,18 +324,38 @@ with tab3:
 
     with col_btn2:
         if st.button("🌐 Enrich CTC from pod.ai", use_container_width=True):
-            with st.spinner("Scraping pod.ai for CTC & offer type data... (takes ~2 min)"):
-                try:
-                    req = requests.post(f"{API_URL}/sync-ctc-enrichment", timeout=180)
-                    if req.status_code == 200:
-                        res = req.json()
-                        st.success(f"CTC enrichment done! {res.get('portal_records', 0)} records enriched.")
-                        st.cache_data.clear()
-                        st.rerun()
+            try:
+                req = requests.post(f"{API_URL}/sync-ctc-enrichment", timeout=15)
+                if req.status_code == 200:
+                    job = req.json()
+                    job_id = job.get("job_id")
+                    st.info(f"⏳ CTC enrichment running in background (job `{job_id}`). Checking every 10s...")
+
+                    # Poll for up to 5 minutes
+                    import time as _time
+                    for _ in range(30):
+                        _time.sleep(10)
+                        try:
+                            status_req = requests.get(f"{API_URL}/sync-ctc-enrichment/status?job_id={job_id}", timeout=10)
+                            status = status_req.json()
+                            if status.get("status") == "done":
+                                result = status.get("result", {})
+                                st.success(f"✅ CTC enrichment done! {result.get('portal_records', 0)} records enriched in {status.get('elapsed_seconds', '?')}s.")
+                                st.cache_data.clear()
+                                st.rerun()
+                                break
+                            elif status.get("status") == "error":
+                                st.error(f"Enrichment failed: {status.get('result', {}).get('error', 'Unknown error')}")
+                                break
+                        except Exception:
+                            pass
                     else:
-                        st.error(f"Enrichment failed: {req.text}")
-                except Exception as e:
-                    st.error(f"Enrichment failed: {e}")
+                        st.warning("Job still running after 5 min — check logs. Data will update on next cache refresh.")
+                else:
+                    st.error(f"Enrichment failed to start: {req.text}")
+            except Exception as e:
+                st.error(f"Enrichment failed: {e}")
+
 
     with col_btn3:
         if st.button("🗑️ Clear Sheet Data & Reset Cron", use_container_width=True):
