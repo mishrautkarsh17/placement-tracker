@@ -77,9 +77,9 @@ def main():
 
     last_email_sync = 0
     last_calendar_sync = 0
-    last_ctc_sync = 0
+    last_ctc_sync = time.time()  # Delay CTC enrichment — don't run Chromium on cold start
 
-    # Run everything once immediately on startup
+    # Run email + calendar once immediately on startup, but NOT CTC (too memory-heavy)
     first_run = True
 
     while True:
@@ -112,7 +112,9 @@ def main():
             last_calendar_sync = time.time()
 
         # --- CTC ENRICHMENT (pod.ai scrape) ---
-        if first_run or (now - last_ctc_sync >= CTC_ENRICHMENT_INTERVAL):
+        # NOTE: Skipped on first_run intentionally — Chromium launch on cold start
+        # causes OOM crashes that bring down the entire FastAPI process.
+        if not first_run and (now - last_ctc_sync >= CTC_ENRICHMENT_INTERVAL):
             try:
                 logging.info("[CTC] Running global CTC enrichment from pod.ai...")
                 sync_ctc_enrichment()
