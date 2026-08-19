@@ -23,10 +23,51 @@ def sync_offer_letters() -> dict:
     if not last_sync_date_str:
         last_sync_date_str = "01-Jul-2026"
         
+    try:
+        from dateutil import parser
+        parsed_date = parser.parse(last_sync_date_str)
+        last_sync_date_str = parsed_date.strftime("%d-%b-%Y")
+    except Exception:
+        # Fallback if parsing fails or dateutil not installed
+        try:
+            # Try to handle common YYYY-MM-DD
+            if "-" in last_sync_date_str and len(last_sync_date_str) >= 10:
+                d_obj = datetime.strptime(last_sync_date_str[:10], "%Y-%m-%d")
+                last_sync_date_str = d_obj.strftime("%d-%b-%Y")
+        except Exception:
+            pass
+
     logging.info(f"Syncing emails since {last_sync_date_str}")
     
+    # Load exact last processed time from state file
+    last_processed_time = datetime(2026, 7, 1)
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r") as f:
+                state = json.load(f)
+                if "last_email_time" in state:
+                    last_processed_time = datetime.fromisoformat(state["last_email_time"])
+        except Exception as e:
+            logging.error(f"Error reading state file: {e}")
+    
     try:
-        recent_emails = gmail_reader.fetch_recent_offers(last_sync_date_str)
+        fetched_emails = gmail_reader.fetch_recent_offers(last_sync_date_str)
+        
+        # Filter out emails we've already processed
+        recent_emails = []
+        for e in fetched_emails:
+            d_str = e.get("date")
+            if d_str and d_str != "N/A":
+                try:
+                    d_obj = datetime.strptime(d_str, "%Y-%m-%d %H:%M:%S")
+                    if d_obj > last_processed_time:
+                        recent_emails.append(e)
+                except ValueError:
+                    # If date parsing fails, keep it just in case
+                    recent_emails.append(e)
+            else:
+                recent_emails.append(e)
+                
         results["new_emails_found"] = len(recent_emails)
 
         if recent_emails:
@@ -36,7 +77,7 @@ def sync_offer_letters() -> dict:
             
             all_success = True
             for batch_num, batch in enumerate(batches, 1):
-                # Delay between batches to avoid Gemini 429 rate limits
+                # Delay between batches to avoid Gemini rate limits
                 if batch_num > 1:
                     logging.info(f"Waiting 15s before next batch to avoid rate limits...")
                     time.sleep(15)
@@ -45,9 +86,6 @@ def sync_offer_letters() -> dict:
                 try:
                     batch_records = gemini_extractor.extract_batch_from_emails(batch)
                     if batch_records:
-                        batch_date = batch[0].get("date", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                        for r in batch_records:
-                            pass
                         sheets_client.upsert_offers(batch_records)
                         results["email_records"] += len(batch_records)
                         
@@ -64,9 +102,18 @@ def sync_offer_letters() -> dict:
                                             latest_date = d_obj
                                     except ValueError:
                                         pass
+                            
                             if latest_date:
+                                # Update sheet coarse date
                                 new_sync_date = latest_date.strftime("%d-%b-%Y")
                                 sheets_client.write_last_sync_time(new_sync_date)
+                                
+                                # Update exact time in state file
+                                if latest_date > last_processed_time:
+                                    last_processed_time = latest_date
+                                    with open(STATE_FILE, "w") as f:
+                                        json.dump({"last_email_time": last_processed_time.isoformat()}, f)
+                                        
                                 logging.info(f"State advanced incrementally to {new_sync_date}")
                         except Exception as e:
                             logging.error(f"Could not write incremental state file: {e}")
@@ -81,13 +128,12 @@ def sync_offer_letters() -> dict:
                     results["errors"].append(err_msg)
                     all_success = False
 
-            # Only advance state if ALL batches succeeded
+            # Only advance sheet state if ALL batches succeeded
             if results["email_records"] > 0:
                 sync_timestamp = datetime.now().strftime("%d-%b-%Y")
                 sheets_client.write_last_sync_time(sync_timestamp)
         
         # --- STEP 2: Detect interview shortlists directly from email tables ---
-        # This is more reliable than inferring from calendar or Gemini extraction
         try:
             shortlisted = gmail_reader.fetch_shortlisted_students(last_sync_date_str)
             if shortlisted:

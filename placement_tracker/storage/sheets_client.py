@@ -374,10 +374,10 @@ def enrich_offers_with_ctc(applications: list[PlacementRecord]):
                 new_offer = best_match["offer_type"]
                 
                 needs_update = False
-                if current_ctc in ("", "N/A") and new_ctc:
+                if new_ctc and new_ctc != "N/A" and new_ctc != current_ctc:
                     needs_update = True
                     row["ctc"] = new_ctc
-                if current_offer in ("", "N/A") and new_offer:
+                if new_offer and new_offer != "N/A" and new_offer != current_offer:
                     needs_update = True
                     row["offer_type"] = new_offer
                     
