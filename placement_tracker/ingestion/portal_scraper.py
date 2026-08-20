@@ -40,11 +40,11 @@ def scrape(pod_ai_username: str, pod_ai_password: str, target_url: str = None) -
                     pass
                 page.wait_for_timeout(3000)  # Give React a moment to settle DOM
                 
-                email_loc = page.locator("input[type='email']")
+                email_loc = page.locator("input[name='username'], input[type='email']").first
                 email_loc.wait_for(state="visible", timeout=30000)
                 email_loc.fill(pod_ai_username)
                 
-                pwd_loc = page.locator("input[type='password']")
+                pwd_loc = page.locator("input[name='password'], input[type='password']").first
                 pwd_loc.wait_for(state="visible", timeout=15000)
                 pwd_loc.fill(pod_ai_password)
                 

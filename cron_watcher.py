@@ -17,9 +17,8 @@ from placement_tracker.config import (
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- INTERVALS (in seconds) ---
-EMAIL_SYNC_INTERVAL = 300          # 5 minutes
-CALENDAR_SYNC_INTERVAL = 3600     # 1 hour
-CTC_ENRICHMENT_INTERVAL = 7200    # 2 hours
+EMAIL_SYNC_INTERVAL = 14400        # 4 hours
+CALENDAR_SYNC_INTERVAL = 43200     # 12 hours
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -65,22 +64,21 @@ def main():
     logging.info("=" * 60)
     logging.info("AI Placement Tracker - Automated Agent Starting")
     logging.info("=" * 60)
-    logging.info(f"  Email sync:      every {EMAIL_SYNC_INTERVAL // 60} min")
-    logging.info(f"  Calendar sync:   every {CALENDAR_SYNC_INTERVAL // 60} min")
-    logging.info(f"  CTC enrichment:  every {CTC_ENRICHMENT_INTERVAL // 60} min")
+    logging.info(f"  Email sync:      every {EMAIL_SYNC_INTERVAL // 3600} hours")
+    logging.info(f"  Calendar sync:   every {CALENDAR_SYNC_INTERVAL // 3600} hours")
+    logging.info(f"  CTC enrichment:  On new email records")
     logging.info("=" * 60)
 
     last_email_sync = 0
     last_calendar_sync = 0
-    last_ctc_sync = time.time()  # Delay CTC enrichment — don't run Chromium on cold start
 
-    # Run email + calendar once immediately on startup, but NOT CTC (too memory-heavy)
+    # Run email + calendar once immediately on startup
     first_run = True
 
     while True:
         now = time.time()
 
-        # --- EMAIL SYNC ---
+        # --- EMAIL SYNC & CTC ENRICHMENT ---
         if first_run or (now - last_email_sync >= EMAIL_SYNC_INTERVAL):
             try:
                 logging.info("[EMAIL] Checking for new placement offer emails...")
@@ -88,6 +86,13 @@ def main():
 
                 if result["new_emails_found"] > 0:
                     logging.info(f"[EMAIL] Processed {result['new_emails_found']} emails, upserted {result['email_records']} records.")
+                    
+                    if result['email_records'] > 0:
+                        try:
+                            logging.info("[CTC] New email records found. Running global CTC enrichment from pod.ai...")
+                            sync_ctc_enrichment()
+                        except Exception as e:
+                            logging.error(f"[CTC] Fatal error: {e}")
                 else:
                     logging.info("[EMAIL] No new emails found.")
 
@@ -105,17 +110,6 @@ def main():
             except Exception as e:
                 logging.error(f"[CALENDAR] Fatal error: {e}")
             last_calendar_sync = time.time()
-
-        # --- CTC ENRICHMENT (pod.ai scrape) ---
-        # NOTE: Skipped on first_run intentionally — Chromium launch on cold start
-        # causes OOM crashes that bring down the entire FastAPI process.
-        if not first_run and (now - last_ctc_sync >= CTC_ENRICHMENT_INTERVAL):
-            try:
-                logging.info("[CTC] Running global CTC enrichment from pod.ai...")
-                sync_ctc_enrichment()
-            except Exception as e:
-                logging.error(f"[CTC] Fatal error: {e}")
-            last_ctc_sync = time.time()
 
         first_run = False
 

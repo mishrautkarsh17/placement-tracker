@@ -140,7 +140,38 @@ def read_calendar() -> pd.DataFrame:
             # Clean up empty rows
             df = df.dropna(how='all')
             if not df.empty and df.shape[1] > 0:
-                df = df[df.iloc[:, 0].astype(str).str.strip() != ""]
+                import numpy as np
+                
+                # Forward-fill Date (col 0) and Day (col 1 if it exists) to maintain history
+                df.iloc[:, 0] = df.iloc[:, 0].replace(r'^\s*$', np.nan, regex=True).ffill()
+                if df.shape[1] > 1:
+                    df.iloc[:, 1] = df.iloc[:, 1].replace(r'^\s*$', np.nan, regex=True).ffill()
+                
+                # Drop rows where Date is completely empty/NaN after ffill
+                df = df.dropna(subset=[df.columns[0]])
+                
+                # Filter to current date onwards
+                if not df.empty:
+                    try:
+                        today_dt = pd.Timestamp.now().normalize()
+                        # Try parsing dates with multiple formats
+                        dates_str = df.iloc[:, 0].astype(str).str.strip()
+                        parsed_dates = pd.to_datetime(dates_str, format='%d-%m-%Y', errors='coerce')
+                        
+                        mask_na = parsed_dates.isna()
+                        if mask_na.any():
+                            parsed_dates[mask_na] = pd.to_datetime(dates_str[mask_na], format='%d/%m/%Y', errors='coerce')
+                        
+                        mask_na2 = parsed_dates.isna()
+                        if mask_na2.any():
+                            parsed_dates[mask_na2] = pd.to_datetime(dates_str[mask_na2], dayfirst=True, errors='coerce')
+                            
+                        # Keep rows where parsed_date >= today_dt OR parsed_date is NaT (if we couldn't parse it, keep it safe)
+                        valid_mask = (parsed_dates >= today_dt) | (parsed_dates.isna())
+                        df = df[valid_mask]
+                    except Exception as e:
+                        logging.warning(f"Could not filter calendar by date: {e}")
+                        
             return df
         return pd.DataFrame()
     except Exception as e:
