@@ -19,14 +19,53 @@ SCOPES = [
 ]
 TOKEN_FILE = 'user_token.json'
 
+def _get_redirect_uri() -> str:
+    """
+    Detects the correct redirect URI for the current environment.
+    Priority order:
+    1. GOOGLE_REDIRECT_URI env var (explicit override)
+    2. RENDER_EXTERNAL_URL (automatically set by Render)
+    3. X-Forwarded-Host header (set by reverse proxies)
+    4. Host header from Streamlit context
+    5. localhost fallback for local dev
+    """
+    import os
+
+    # 1. Explicit override always wins
+    explicit = os.environ.get("GOOGLE_REDIRECT_URI")
+    if explicit:
+        return explicit.rstrip("/")
+
+    # 2. Render sets this automatically — most reliable on Render
+    render_url = os.environ.get("RENDER_EXTERNAL_URL")
+    if render_url:
+        return render_url.rstrip("/")
+
+    # 3. Try X-Forwarded-Host (set by nginx/reverse proxies)
+    try:
+        headers = st.context.headers
+        fwd_host = headers.get("X-Forwarded-Host", "")
+        if fwd_host and not fwd_host.startswith("localhost"):
+            return f"https://{fwd_host.rstrip('/')}"
+
+        # 4. Fall back to Host header
+        host = headers.get("Host", "")
+        if host and not host.startswith("localhost") and not host.startswith("127."):
+            return f"https://{host.rstrip('/')}"
+    except Exception:
+        pass
+
+    # 5. Local dev fallback
+    return "http://localhost:8501"
+
 def get_oauth_url():
     params = {
         "client_id": config.GOOGLE_CLIENT_ID,
-        "redirect_uri": config.get_secret("GOOGLE_REDIRECT_URI", default="http://localhost:8501"),
+        "redirect_uri": _get_redirect_uri(),
         "response_type": "code",
         "scope": " ".join(SCOPES),
         "access_type": "offline",
-        "prompt": "consent"
+        "prompt": "select_account consent"
     }
     return "https://accounts.google.com/o/oauth2/auth?" + urllib.parse.urlencode(params)
 
@@ -35,7 +74,7 @@ def exchange_code_for_token(code):
         "code": code,
         "client_id": config.GOOGLE_CLIENT_ID,
         "client_secret": config.GOOGLE_CLIENT_SECRET,
-        "redirect_uri": config.get_secret("GOOGLE_REDIRECT_URI", default="http://localhost:8501"),
+        "redirect_uri": _get_redirect_uri(),
         "grant_type": "authorization_code"
     }
     res = requests.post("https://oauth2.googleapis.com/token", data=data)

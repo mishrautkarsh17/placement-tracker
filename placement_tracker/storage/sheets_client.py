@@ -192,7 +192,10 @@ def _ensure_headers(worksheet, headers: list):
     """Ensures row 1 of the worksheet has the correct headers. Fixes if needed."""
     try:
         row1 = worksheet.row_values(1)
-        if row1 != headers:
+        # Only compare the first len(headers) columns — extra columns (e.g. from
+        # data-validation dropdowns or stale cells beyond our range) would cause a
+        # strict list equality to always fail, triggering a spurious "fix" every poll.
+        if row1[:len(headers)] != headers:
             worksheet.update(values=[headers], range_name="A1")
             logging.info(f"Fixed headers in '{worksheet.title}'")
     except Exception as e:
