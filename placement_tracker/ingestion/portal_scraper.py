@@ -40,15 +40,16 @@ def scrape(pod_ai_username: str, pod_ai_password: str, target_url: str = None) -
                     pass
                 page.wait_for_timeout(3000)  # Give React a moment to settle DOM
                 
-                email_loc = page.locator("input[name='username'], input[type='email']").first
+                email_loc = page.locator("input[name='username']:visible, input[type='email']:visible, input[placeholder*='Email']:visible").first
                 email_loc.wait_for(state="visible", timeout=30000)
                 email_loc.fill(pod_ai_username)
                 
-                pwd_loc = page.locator("input[name='password'], input[type='password']").first
+                pwd_loc = page.locator("input[name='password']:visible, input[type='password']:visible, input[placeholder*='Password']:visible").first
                 pwd_loc.wait_for(state="visible", timeout=15000)
                 pwd_loc.fill(pod_ai_password)
                 
-                page.click("button[type='submit']")
+                btn_loc = page.locator("button[type='submit']:visible, button:has-text('Log in'):visible, button:has-text('Login'):visible").first
+                btn_loc.click()
                 try:
                     page.wait_for_load_state("domcontentloaded", timeout=20000)
                 except Exception:
@@ -67,9 +68,9 @@ def scrape(pod_ai_username: str, pod_ai_password: str, target_url: str = None) -
                 logging.info(f"Navigated to target tab: {final_url}")
                 
                 if not target_url:
-                    # Try clicking the Applications sub-tab
+                    # Try clicking the Applications sub-tab explicitly by role
                     try:
-                        page.locator("text=Applications").first.click(timeout=5000)
+                        page.locator("[role='tab']:has-text('Applications')").first.click(timeout=5000)
                         page.wait_for_load_state("domcontentloaded", timeout=10000)
                         logging.info("Clicked Applications sub-tab.")
                     except Exception:
