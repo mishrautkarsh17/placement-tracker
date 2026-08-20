@@ -138,14 +138,20 @@ def read_calendar() -> pd.DataFrame:
             df = pd.DataFrame(data, columns=unique_headers)
             
             # Clean up empty rows
-            df = df.dropna(how='all')
             if not df.empty and df.shape[1] > 0:
                 import numpy as np
                 
+                # Convert empty strings to NaN globally to allow proper dropping
+                df = df.replace(r'^\s*$', np.nan, regex=True)
+                
                 # Forward-fill Date (col 0) and Day (col 1 if it exists) to maintain history
-                df.iloc[:, 0] = df.iloc[:, 0].replace(r'^\s*$', np.nan, regex=True).ffill()
+                df.iloc[:, 0] = df.iloc[:, 0].ffill()
                 if df.shape[1] > 1:
-                    df.iloc[:, 1] = df.iloc[:, 1].replace(r'^\s*$', np.nan, regex=True).ffill()
+                    df.iloc[:, 1] = df.iloc[:, 1].ffill()
+                
+                # Drop rows where ALL data columns (Company, Process, etc. from col 2 onwards) are empty
+                if df.shape[1] > 2:
+                    df = df.dropna(subset=df.columns[2:], how='all')
                 
                 # Drop rows where Date is completely empty/NaN after ffill
                 df = df.dropna(subset=[df.columns[0]])
@@ -172,6 +178,7 @@ def read_calendar() -> pd.DataFrame:
                     except Exception as e:
                         logging.warning(f"Could not filter calendar by date: {e}")
                         
+                df = df.fillna("")
             return df
         return pd.DataFrame()
     except Exception as e:
