@@ -71,7 +71,7 @@ def sync_offer_letters() -> dict:
         results["new_emails_found"] = len(recent_emails)
 
         if recent_emails:
-            BATCH_SIZE = 5  # ~5 emails keeps us safely under 250K token limit
+            BATCH_SIZE = 10  # Increased batch size to save on API requests (RPM) since we now parse text
             batches = [recent_emails[i:i+BATCH_SIZE] for i in range(0, len(recent_emails), BATCH_SIZE)]
             logging.info(f"Processing {len(recent_emails)} emails in {len(batches)} batch(es) of up to {BATCH_SIZE}...")
             
@@ -79,8 +79,8 @@ def sync_offer_letters() -> dict:
             for batch_num, batch in enumerate(batches, 1):
                 # Delay between batches to avoid Gemini rate limits
                 if batch_num > 1:
-                    logging.info(f"Waiting 15s before next batch to avoid rate limits...")
-                    time.sleep(15)
+                    logging.info(f"Waiting 20s before next batch to avoid rate limits...")
+                    time.sleep(20)
                     
                 logging.info(f"Batch {batch_num}/{len(batches)}: sending {len(batch)} emails to Gemini...")
                 try:
@@ -225,11 +225,15 @@ def sync_global_opportunities(pod_ai_username: str, pod_ai_password: str) -> dic
     logging.info(f"Total unique cards after dedup: {len(unique_scraped)} (from {len(all_scraped)} raw)")
     
     if unique_scraped:
-        BATCH_SIZE = 10
+        BATCH_SIZE = 20
         batches = [unique_scraped[i:i+BATCH_SIZE] for i in range(0, len(unique_scraped), BATCH_SIZE)]
         logging.info(f"Processing {len(unique_scraped)} opportunities in {len(batches)} batch(es) of {BATCH_SIZE}...")
         
         for batch_num, batch in enumerate(batches, 1):
+            if batch_num > 1:
+                logging.info(f"Waiting 20s before next opportunity batch to avoid rate limits...")
+                time.sleep(20)
+                
             try:
                 bulk_text = "\n--- NEXT CARD ---\n".join([c["raw_card_text"] for c in batch])
                 records = gemini_extractor.extract_from_portal(

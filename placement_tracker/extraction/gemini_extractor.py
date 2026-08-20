@@ -108,12 +108,15 @@ def extract_batch_from_emails(emails: list[dict]) -> list[dict]:
     schema_json = PlacementRecord.schema_json()
     
     # Build a combined block
+    from bs4 import BeautifulSoup
     parts = []
     for i, e in enumerate(emails):
         subject = e.get('subject', 'No Subject')
         date = e.get('date', 'N/A')
-        body = e.get('raw_html', '')
-        parts.append(f"<!-- EMAIL {i+1} | SUBJECT: {subject} | DATE: {date} -->\n{body}")
+        raw_body = e.get('raw_html', '')
+        # Convert HTML to clean text to save massive amounts of tokens
+        clean_text = BeautifulSoup(raw_body, 'html.parser').get_text(separator=' ', strip=True) if raw_body else ''
+        parts.append(f"<!-- EMAIL {i+1} | SUBJECT: {subject} | DATE: {date} -->\n{clean_text}")
     emails_block = "\n---EMAIL_BREAK---\n".join(parts)
     
     prompt = BATCH_EMAIL_PROMPT.format(schema=schema_json, emails_block=emails_block)
@@ -148,8 +151,10 @@ def extract_batch_from_emails(emails: list[dict]) -> list[dict]:
 
 def extract_from_email(raw_html: str, subject: str = "") -> list[PlacementRecord]:
     """Extracts a list of PlacementRecord from email HTML + subject using Gemini."""
+    from bs4 import BeautifulSoup
     schema_json = PlacementRecord.schema_json()
-    email_block = f"SUBJECT: {subject}\n\nBODY:\n{raw_html}"
+    clean_text = BeautifulSoup(raw_html, 'html.parser').get_text(separator=' ', strip=True) if raw_html else ''
+    email_block = f"SUBJECT: {subject}\n\nBODY:\n{clean_text}"
     prompt = EMAIL_PROMPT.format(schema=schema_json, email_block=email_block)
     
     try:
