@@ -439,6 +439,7 @@ with tab2:
                     st.error(f"Sync failed: {e}")
     
     df_cal = fetch_calendar()
+    df_apps = fetch_applications(roll_no)
     
     if df_cal.empty:
         st.info("No calendar data available.")
@@ -446,38 +447,65 @@ with tab2:
         # Strip whitespace from column names (sheet has trailing spaces like 'Date ', 'Company ')
         df_cal.columns = df_cal.columns.str.strip()
         
-        # Today's Highlights
-        st.subheader("Today's Events")
-        today_dt = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        filter_my_apps = st.checkbox("🎯 Show only companies I've applied to / am eligible for", value=True)
         
-        if 'Date' in df_cal.columns:
-            # Clean up date column values: strip whitespace
-            df_cal['Date'] = df_cal['Date'].astype(str).str.strip()
-            
-            # Parse dates trying multiple formats
-            parsed = pd.to_datetime(df_cal['Date'], format='%d-%m-%Y', errors='coerce')
-            # Try alternate format if some failed
-            mask_na = parsed.isna()
-            if mask_na.any():
-                parsed[mask_na] = pd.to_datetime(df_cal.loc[mask_na, 'Date'], format='%d/%m/%Y', errors='coerce')
-            df_cal['parsed_date'] = parsed
-            
-            # Today's events
-            today_events = df_cal[df_cal['parsed_date'] == today_dt]
-            if not today_events.empty:
-                for _, row in today_events.iterrows():
-                    st.error(f"🚨 **{row.get('Company', 'Unknown')}** - {row.get('Process', '')} at {row.get('Test Start Time', '')} / {row.get('PPT Start Time', '')}")
-            else:
-                st.success("No events scheduled for today.")
-        
-            st.divider()
-        
-            # Filter: only show today and future events
-            df_cal_future = df_cal[df_cal['parsed_date'] >= today_dt].drop(columns=['parsed_date'])
-            st.dataframe(df_cal_future, width='stretch')
+        if filter_my_apps:
+            if df_apps.empty:
+                st.info("⚠️ You haven't synced your applications yet. Showing the full calendar. Head to the **Company Hub** tab to sync your data!")
+            elif 'Company' in df_cal.columns and 'company_name' in df_apps.columns:
+                import re
+                def normalize(name):
+                    return re.sub(r'[^a-z0-9]', '', str(name).lower())
+                
+                my_companies = df_apps['company_name'].apply(normalize).unique()
+                my_companies = [c for c in my_companies if len(c) > 1]
+                
+                def is_match(c):
+                    c_norm = normalize(c)
+                    if len(c_norm) < 2: return False
+                    for mc in my_companies:
+                        if mc in c_norm or c_norm in mc:
+                            return True
+                    return False
+                
+                mask = df_cal['Company'].apply(is_match)
+                df_cal = df_cal[mask]
+
+        if df_cal.empty:
+            st.success("No scheduled events found for your applied companies. 🎉")
         else:
-            st.divider()
-            st.dataframe(df_cal, width='stretch')
+            # Today's Highlights
+            st.subheader("Today's Events")
+            today_dt = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            if 'Date' in df_cal.columns:
+                # Clean up date column values: strip whitespace
+                df_cal['Date'] = df_cal['Date'].astype(str).str.strip()
+                
+                # Parse dates trying multiple formats
+                parsed = pd.to_datetime(df_cal['Date'], format='%d-%m-%Y', errors='coerce')
+                # Try alternate format if some failed
+                mask_na = parsed.isna()
+                if mask_na.any():
+                    parsed[mask_na] = pd.to_datetime(df_cal.loc[mask_na, 'Date'], format='%d/%m/%Y', errors='coerce')
+                df_cal['parsed_date'] = parsed
+                
+                # Today's events
+                today_events = df_cal[df_cal['parsed_date'] == today_dt]
+                if not today_events.empty:
+                    for _, row in today_events.iterrows():
+                        st.error(f"🚨 **{row.get('Company', 'Unknown')}** - {row.get('Process', '')} at {row.get('Test Start Time', '')} / {row.get('PPT Start Time', '')}")
+                else:
+                    st.success("No events scheduled for today.")
+            
+                st.divider()
+            
+                # Filter: only show today and future events
+                df_cal_future = df_cal[df_cal['parsed_date'] >= today_dt].drop(columns=['parsed_date'])
+                st.dataframe(df_cal_future, width='stretch')
+            else:
+                st.divider()
+                st.dataframe(df_cal, width='stretch')
 
 with tab3:
     st.header("Placement Analytics")
