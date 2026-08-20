@@ -2,7 +2,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import threading
+import time
+import os
 import logging
+
+# Set local timezone to IST for Render logs (Linux)
+if hasattr(time, 'tzset'):
+    os.environ['TZ'] = 'Asia/Kolkata'
+    time.tzset()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 

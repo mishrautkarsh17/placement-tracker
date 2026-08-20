@@ -6,6 +6,11 @@ import gc
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
+# Set local timezone to IST for Render logs (Linux)
+if hasattr(time, 'tzset'):
+    os.environ['TZ'] = 'Asia/Kolkata'
+    time.tzset()
+
 sys.path.insert(0, os.path.abspath('.'))
 from placement_tracker.pipeline import orchestrator
 from placement_tracker.storage import sheets_client
