@@ -34,7 +34,8 @@ def generate_copilot_response(user_message: str, context_data: dict) -> str:
         response = generate_content_with_fallback(
             prompt=full_prompt,
             config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())]
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
             )
         )
         return response.text
