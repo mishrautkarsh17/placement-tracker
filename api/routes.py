@@ -224,7 +224,6 @@ def get_daily_brief(student_id: str):
     
     prompt = """
     Generate a concise daily placement briefing for the student.
-    IMPORTANT: If historical preparation data or interview patterns are not available in the provided context for an upcoming company, YOU MUST use your Google Search tool to find typical interview questions, interview formats, and recent interview experiences for that company. Do not say data is unavailable!
     
     Format exactly like this (use markdown):
     

@@ -33,22 +33,15 @@ def generate_copilot_response(user_message: str, context_data: dict) -> str:
         
         full_prompt = f"{SYSTEM_PROMPT}\n\nContext Data:\n{context_str}\n\nUser Question: {user_message}"
         
-        config = types.GenerateContentConfig(
-            tools=[types.Tool(google_search=types.GoogleSearch())],
-            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
-        )
-        
         if FRONTEND_GEMINI_API_KEY:
             client = genai.Client(api_key=FRONTEND_GEMINI_API_KEY, vertexai=False)
             response = client.models.generate_content(
                 model='gemini-3.5-flash',
-                contents=full_prompt,
-                config=config
+                contents=full_prompt
             )
         else:
             response = generate_content_with_fallback(
-                prompt=full_prompt,
-                config=config
+                prompt=full_prompt
             )
             
         return response.text
