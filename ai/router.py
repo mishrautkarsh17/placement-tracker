@@ -2,8 +2,10 @@ import os
 import json
 import logging
 from google.genai import types
+from google import genai
 from ai.prompts import SYSTEM_PROMPT
 from placement_tracker.llm_client import generate_content_with_fallback
+from placement_tracker.config import FRONTEND_GEMINI_API_KEY
 
 def route_query(user_message: str) -> dict:
     """
@@ -31,13 +33,24 @@ def generate_copilot_response(user_message: str, context_data: dict) -> str:
         
         full_prompt = f"{SYSTEM_PROMPT}\n\nContext Data:\n{context_str}\n\nUser Question: {user_message}"
         
-        response = generate_content_with_fallback(
-            prompt=full_prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
-            )
+        config = types.GenerateContentConfig(
+            tools=[types.Tool(google_search=types.GoogleSearch())],
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
         )
+        
+        if FRONTEND_GEMINI_API_KEY:
+            client = genai.Client(api_key=FRONTEND_GEMINI_API_KEY, vertexai=False)
+            response = client.models.generate_content(
+                model='gemini-3.5-flash',
+                contents=full_prompt,
+                config=config
+            )
+        else:
+            response = generate_content_with_fallback(
+                prompt=full_prompt,
+                config=config
+            )
+            
         return response.text
     except Exception as e:
         logging.error(f"Gemini generation error: {e}")
@@ -81,7 +94,15 @@ STUDENT RESUME:
 ACTIVE COMPANIES ON CAMPUS:
 {companies_str}
 """
-        response = generate_content_with_fallback(prompt=prompt)
+        if FRONTEND_GEMINI_API_KEY:
+            client = genai.Client(api_key=FRONTEND_GEMINI_API_KEY, vertexai=False)
+            response = client.models.generate_content(
+                model='gemini-3.5-flash',
+                contents=prompt
+            )
+        else:
+            response = generate_content_with_fallback(prompt=prompt)
+            
         return response.text
     except Exception as e:
         logging.error(f"Gemini generation error in resume matcher: {e}")

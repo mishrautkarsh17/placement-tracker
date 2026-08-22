@@ -21,37 +21,48 @@ def sync_offer_letters() -> dict:
     
     # Default to 01-Jul-2026 if no state exists
     if not last_sync_date_str:
-        last_sync_date_str = "01-Jul-2026"
+        last_sync_date_str = "01-Jul-2026 00:00:00"
         
+    last_processed_time = datetime(2026, 7, 1)
     try:
         from dateutil import parser
         parsed_date = parser.parse(last_sync_date_str)
-        last_sync_date_str = parsed_date.strftime("%d-%b-%Y")
+        last_processed_time = parsed_date
+        imap_date_str = parsed_date.strftime("%d-%b-%Y")
     except Exception:
         # Fallback if parsing fails or dateutil not installed
         try:
-            # Try to handle common YYYY-MM-DD
-            if "-" in last_sync_date_str and len(last_sync_date_str) >= 10:
-                d_obj = datetime.strptime(last_sync_date_str[:10], "%Y-%m-%d")
-                last_sync_date_str = d_obj.strftime("%d-%b-%Y")
+            # Try exact format first
+            parsed_date = datetime.strptime(last_sync_date_str, "%d-%b-%Y %H:%M:%S")
+            last_processed_time = parsed_date
+            imap_date_str = parsed_date.strftime("%d-%b-%Y")
         except Exception:
-            pass
+            try:
+                # Try to handle common YYYY-MM-DD
+                if "-" in last_sync_date_str and len(last_sync_date_str) >= 10:
+                    parsed_date = datetime.strptime(last_sync_date_str[:10], "%Y-%m-%d")
+                    last_processed_time = parsed_date
+                    imap_date_str = parsed_date.strftime("%d-%b-%Y")
+                else:
+                    imap_date_str = "01-Jul-2026"
+            except Exception:
+                imap_date_str = "01-Jul-2026"
 
-    logging.info(f"Syncing emails since {last_sync_date_str}")
-    
-    # Load exact last processed time from state file
-    last_processed_time = datetime(2026, 7, 1)
+    logging.info(f"Syncing emails since {imap_date_str}")
+
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
                 state = json.load(f)
                 if "last_email_time" in state:
-                    last_processed_time = datetime.fromisoformat(state["last_email_time"])
+                    state_time = datetime.fromisoformat(state["last_email_time"])
+                    if state_time > last_processed_time:
+                        last_processed_time = state_time
         except Exception as e:
             logging.error(f"Error reading state file: {e}")
     
     try:
-        fetched_emails = gmail_reader.fetch_recent_offers(last_sync_date_str)
+        fetched_emails = gmail_reader.fetch_recent_offers(imap_date_str)
         
         # Filter out emails we've already processed
         recent_emails = []
@@ -104,8 +115,8 @@ def sync_offer_letters() -> dict:
                                         pass
                             
                             if latest_date:
-                                # Update sheet coarse date
-                                new_sync_date = latest_date.strftime("%d-%b-%Y")
+                                # Update sheet coarse date with exact time
+                                new_sync_date = latest_date.strftime("%d-%b-%Y %H:%M:%S")
                                 sheets_client.write_last_sync_time(new_sync_date)
                                 
                                 # Update exact time in state file
@@ -130,12 +141,12 @@ def sync_offer_letters() -> dict:
 
             # Only advance sheet state if ALL batches succeeded
             if results["email_records"] > 0:
-                sync_timestamp = datetime.now().strftime("%d-%b-%Y")
+                sync_timestamp = datetime.now().strftime("%d-%b-%Y %H:%M:%S")
                 sheets_client.write_last_sync_time(sync_timestamp)
         
         # --- STEP 2: Detect interview shortlists directly from email tables ---
         try:
-            shortlisted = gmail_reader.fetch_shortlisted_students(last_sync_date_str)
+            shortlisted = gmail_reader.fetch_shortlisted_students(imap_date_str)
             if shortlisted:
                 logging.info(f"Updating 'Interviewing' status for {len(shortlisted)} shortlisted entries.")
                 sheets_client.update_interview_status(shortlisted)

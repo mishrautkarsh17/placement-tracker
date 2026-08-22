@@ -23,6 +23,7 @@ GMAIL_APP_PASSWORD = get_secret("GMAIL_APP_PASSWORD")
 
 # Gemini Config
 GEMINI_API_KEY = get_secret("GEMINI_API_KEY")
+FRONTEND_GEMINI_API_KEY = get_secret("FRONTEND_GEMINI_API_KEY")
 
 # Sheets Config
 GOOGLE_SHEET_ID = get_secret("GOOGLE_SHEET_ID")
